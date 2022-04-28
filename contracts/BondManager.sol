@@ -2705,17 +2705,17 @@ contract BondManager is Ownable, BondDiscountable {
         require(isSaleActive);
 
         address sender = _msgSender();
-        require(sender != address(0), "fNFT Bond Manager: Creation from the zero address is prohibited.");
+        require(sender != address(0), "C00");
 
         (uint256 bondPrice, bool discountActive) = getPrice(levelID);
 
         if(discountActive) {
             uint8 updateFactor = getDiscountUpdateFactor();
-            require(discountedBondsSold[discountIndex][updateFactor][levelID] + _amount <= discount[discountIndex].purchaseLimit[levelID], "No more nodes of this level available for sale for this interval.");
+            require(discountedBondsSold[discountIndex][updateFactor][levelID] + _amount <= discount[discountIndex].purchaseLimit[levelID], "C01");
             discountedBondsSold[discountIndex][updateFactor][levelID] += _amount;
         }
 
-        require(baseToken.balanceOf(sender) >= bondPrice * _amount, "fNFT Bond Manager: Insufficient balance for bond creation.");
+        require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
         baseToken.safeTransferFrom(_msgSender(), treasury, bondPrice * _amount);
 
