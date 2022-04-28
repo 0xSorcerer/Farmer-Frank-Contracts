@@ -3,40 +3,31 @@ const web3 = new Web3()
 
 var fNFTBond = artifacts.require('fNFTBond')
 var BondManager = artifacts.require('BondManager')
+var ERC20 = artifacts.require('ERC20')
 
 contract("BondManager", async (accounts) => {
 
-    const name = 'fNFT Bond - (JOE)'
-    const symbol = 'fNFTB01'
+    const tokenName = "JOE"
+    const tokenSymbol = "JOE"
+    const bondName = 'fNFT Bond - (JOE)'
+    const bondSymbol = 'fNFTB01'
 
+    const tokenBalance = "10000000000000000000000000" //10^25
+    
     beforeEach(async () => {
-        this.bond = await fNFTBond.new(name, symbol);
-    })
-    
-    it("Correct name.", async () => {
-        assert.equal(await this.instance.name(), name);
+        this.token = await ERC20.new(tokenName, tokenSymbol);
+        this.bond = await fNFTBond.new(bondName, bondSymbol);
+        this.manager = await BondManager.new(this.bond.address, this.token.address)
+    })  
+
+    it("Correct user balance.", async () => {
+        assert.equal(await this.token.balanceOf(accounts[0]), tokenBalance)
     })
 
-    it("Correct symbol.", async () => {
-        assert.equal(await this.instance.symbol(), symbol);
+    it("Correct user.", async () => {
+        console.log(this.manager.address)
     })
 
-    it("Correct level count.", async () => {
-        assert.equal(Object.values(await this.instance.getActiveBondLevels()).length, initialLevels.length)
-    })
-    
-    it("Correct levels.", async () => {
-        const activeLevels = Object.values(await this.instance.getActiveBondLevels())
 
-        for(var i = 0; i < initialLevels.length; i++) {
-            const level = await this.instance.getBondLevel(activeLevels[i])
-
-            assert.equal(level.levelID, activeLevels[i])
-            assert.equal(level.active, true)
-            assert.equal(level.basePrice, initialLevels[i].basePrice)
-            assert.equal(level.weight, initialLevels[i].weight)
-            assert.equal(level.name, initialLevels[i].name)
-        }
-    })
     
 })
