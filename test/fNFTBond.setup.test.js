@@ -10,25 +10,21 @@ contract("fNFTBond", async (accounts) => {
 
     const initialLevels = [
         {
-            index: "0",
             name: "Level I",
             basePrice: "10",
             weight: "100"
         },
         {
-            index: "1",
             name: "Level II",
             basePrice: "100",
             weight: "105"
         },
         {
-            index: "2",
             name: "Level III",
             basePrice: "1000",
             weight: "110"
         },
         {
-            index: "3",
             name: "Level IV",
             basePrice: "5000",
             weight: "115"
