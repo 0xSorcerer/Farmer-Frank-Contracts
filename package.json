@@ -4,12 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "push": "git add .; git commit -m \"Commit\"; git push -u origin main"
+    "test": "echo",
+    "push": "git add .; git commit -m \"Commit\"; git push -u origin main; echo "
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@truffle/hdwallet-provider": "^2.0.7",
     "dotenv": "^16.0.0",
     "truffle": "^5.5.11"
   }
