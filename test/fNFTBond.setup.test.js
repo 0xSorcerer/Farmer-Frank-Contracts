@@ -38,8 +38,6 @@ contract("fNFTBond", async (accounts) => {
     beforeEach(async () => {
         this.instance = await fNFTBond.new(name, symbol);
     })
-
-    
     
     it("Correct name.", async () => {
         assert.equal(await this.instance.name(), name);
