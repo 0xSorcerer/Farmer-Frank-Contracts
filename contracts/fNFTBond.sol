@@ -4,12 +4,7 @@ import "./other/ERC721.sol";
 import "./other/Ownable.sol";
 import "./libraries/SafeMath.sol";
 import "./libraries/Address.sol";
-
-interface IBondManager {
-    function accRewardsPerWS() external pure returns (uint256);
-
-    function accSharesPerUS() external pure returns (uint256);
-}
+import "./interfaces/IBondManager.sol";
 
 contract fNFTBond is ERC721, Ownable {
 

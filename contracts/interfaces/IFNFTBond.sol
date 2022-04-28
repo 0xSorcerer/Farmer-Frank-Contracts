@@ -26,30 +26,30 @@ interface IFNFTBond {
 
     function totalActiveBondLevels() external view returns (uint8);
 
-    function linkBondManager (address _bondManager) external;
+    function linkBondManager(address _bondManager) external;
 
-    function _addBondLevelAtIndex (string memory _name, uint16 _basePrice, uint16 _weight, uint16 _index) external returns (bytes4);
+    function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint16 _index) external returns (bytes4);
 
-    function _changeBondLevel (bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight) external;
+    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight) external;
 
-    function _deactivateBondLevel (bytes4 levelID) external;
+    function _deactivateBondLevel(bytes4 levelID) external;
 
-    function _activateBondLevel (bytes4 levelID, uint16 _index) external;
+    function _activateBondLevel(bytes4 levelID, uint16 _index) external;
 
-    function mintBonds (address _account, bytes4 levelID, uint8 _amount, uint256 _price) external;
+    function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _price) external;
 
-    function claim (address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external;
+    function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external;
 
-    function setBaseURI (string memory baseURI_ ) external;
+    function setBaseURI(string memory baseURI_ ) external;
 
-    function getActiveBondLevels () external view returns (bytes4[] memory);
+    function getActiveBondLevels() external view returns (bytes4[] memory);
 
-    function getBondLevel (bytes4 _levelID) external view returns (BondLevel memory);
+    function getBondLevel(bytes4 _levelID) external view returns (BondLevel memory);
 
-    function getBond (uint256 _bondID) external view returns (Bond memory);
+    function getBond(uint256 _bondID) external view returns (Bond memory);
 
-    function getBondsIDsOf (address _account) external view returns (uint256[] memory);
+    function getBondsIDsOf(address _account) external view returns (uint256[] memory);
 
-    function tokenURI (uint256 _bondID) external view returns (string memory);
+    function tokenURI(uint256 _bondID) external view returns (string memory);
 
 }
