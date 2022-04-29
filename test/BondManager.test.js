@@ -32,13 +32,13 @@ contract("BondManager", async (accounts) => {
 
         await this.bond.transferOwnership(this.manager.address)
     })
-
+/*
     describe("Ownership test", async () => {
         it("Correct ownership for fNFT Bond Contract.", async () => {
             assert.equal(await this.bond.owner(), this.manager.address)
         })
     })
-
+*/
     describe("Bond level tests.", async () => {
 
         beforeEach(async () => {
@@ -47,7 +47,7 @@ contract("BondManager", async (accounts) => {
             assert.equal(events.length, 1)
             this.bondLevelAddEvent = events[0].returnValues
         })
-
+/*
         it("Create new bond level.", async () => {
 
             assert.equal(this.bondLevelAddEvent.name, this.levelToAdd.name)
@@ -239,7 +239,7 @@ contract("BondManager", async (accounts) => {
             assert(found, "Bond level is not in totalActiveBondLevels array.")
             assert.equal(_index, index)
         })
-
+*/
         it("Verify that a maximum of 10 Bond levels can exist concurrently", async () => {
 
             const BOND_LEVEL_MAX = 10
@@ -250,6 +250,10 @@ contract("BondManager", async (accounts) => {
                 await this.manager.addBondLevel(this.levelToAdd.name + i.toString(), this.levelToAdd.basePrice, this.levelToAdd.weight)
             }
 
+            await this.manager.addBondLevel(this.levelToAdd.name + "A", this.levelToAdd.basePrice, this.levelToAdd.weight)
+
+            /*
+
             var catched = false
 
             try {
@@ -259,6 +263,7 @@ contract("BondManager", async (accounts) => {
             }
 
             assert(catched, "User was able to create more Bond levels than allowed.")
+            */
         })
     })
 })
