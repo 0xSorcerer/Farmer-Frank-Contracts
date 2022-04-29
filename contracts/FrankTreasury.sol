@@ -7,6 +7,10 @@ import "./libraries/SafeMath.sol";
 import "./libraries/Address.sol";
 import "./interfaces/IBondManager.sol";
 import "./libraries/SafeERC20.sol";
+import "./interfaces/IJoeROuter02.sol";
+import "./interfaces/IBoostedMasterChefJoe.sol";
+import "./interfaces/IJoePair.sol";
+
 
 interface IStableJoeStaking {
     function deposit(uint256 _amount) external;
@@ -34,7 +38,10 @@ contract FrankTreasury is Ownable {
 
     address SJoeStaing;
     address VeJoeStaking;
+    address JoeRouter;
     address baseToken;
+
+    IBoostedMasterChefJoe boostedMC = IBoostedMasterChefJoe(0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7);
 
     uint256 bondedTokens;
 
@@ -71,6 +78,62 @@ contract FrankTreasury is Ownable {
     function claim() external {
         IStableJoeStaking(SJoeStaing).withdraw(0);
         IVeJoeStaking(VeJoeStaking).claim();
+
+        //Liquidity claim
+    }
+
+    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner {
+        IJoePair pair = IJoePair(_pool);
+        IJoeRouter02 router = IJoeRouter02(JoeRouter);
+
+        IERC20(baseToken).approve(JoeRouter, 999999999999999999999999999999);
+
+        address token0 = pair.token0();
+        address token1 = pair.token1();
+
+        address[] memory path = new address[](2);
+        path[0] = baseToken;
+
+        uint256 minAmountOut;
+        uint256 amountOutA;
+
+        if(token0 != baseToken) {
+            path[1] = token0;
+            minAmountOut = (router.getAmountsOut((_amount / 2), path)[1] * 95 / 100);
+            amountOutA = (router.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
+            IERC20(token0).approve(JoeRouter, 999999999999999999999999999999);
+        } else {
+            amountOutA = _amount / 2;
+        }
+
+        uint256 amountOutB;
+
+        if(token1 != baseToken) {
+            path[1] = token1;
+            minAmountOut = (router.getAmountsOut((_amount / 2), path)[1] * 95 / 100);
+            amountOutB = (router.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
+            IERC20(token1).approve(JoeRouter, 999999999999999999999999999999);
+        } else {
+            amountOutB = _amount / 2;
+        }
+
+        (uint256 amountA, uint256 amountB, uint256 liquidity) = router.addLiquidity(token0, token1, amountOutA, amountOutB, (amountOutA * 95 / 100), (amountOutB * 95 / 100), address(this), block.timestamp + 1000);
+
+        uint256 pid = getPoolIDFromLPToken(_pool);
+
+        IERC20(_pool).approve(address(boostedMC), 999999999999999999999999999999);
+
+        boostedMC.deposit(pid, liquidity);
+    }
+
+    function getPoolIDFromLPToken(address _token) public view returns (uint256) {
+        for(uint256 i = 0; i < boostedMC.poolLength(); i++) {
+            (address _lp, , , , , , , , ) = boostedMC.poolInfo(i);
+            if(_lp == _token) {
+                return i;
+            }
+        }
+        revert();
     }
 
 
