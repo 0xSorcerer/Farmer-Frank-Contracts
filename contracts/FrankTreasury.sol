@@ -68,6 +68,11 @@ contract FrankTreasury is Ownable {
         IVeJoeStaking(VeJoeStaking).deposit(amounts[1]);
     }
 
+    function claim() external {
+        IStableJoeStaking(SJoeStaing).withdraw(0);
+        IVeJoeStaking(VeJoeStaking).claim();
+    }
+
 
 
     function proportionDivide(uint256 amount, uint16[] memory proportions) internal pure returns (uint256[] memory amounts) {
