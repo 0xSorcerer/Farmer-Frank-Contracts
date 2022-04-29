@@ -4,6 +4,7 @@ const web3 = new Web3()
 const ethers = require('ethers')
 
 const truffleAssert = require('truffle-assertions');
+const { isTypeValueInput } = require('truffle/build/459.bundled');
 
 var fNFTBond = artifacts.require('fNFTBond')
 var BondManager = artifacts.require('BondManager')
@@ -34,6 +35,8 @@ contract("BondManager", async (accounts) => {
 
     
 
+    
+
     describe("Ownership test", async () => {
         it("Correct ownership for fNFT Bond Contract.", async () => {
             assert.equal(await this.bond.owner(), this.manager.address)
@@ -43,7 +46,7 @@ contract("BondManager", async (accounts) => {
     
 
 
-    describe("Bond level testing", async () => {
+    describe("Bond level tests.", async () => {
 
         beforeEach(async () => {
             await this.manager.addBondLevel(this.levelToAdd.name, this.levelToAdd.basePrice, this.levelToAdd.weight)
@@ -53,9 +56,9 @@ contract("BondManager", async (accounts) => {
         })
 
         
-        /*
+        
 
-        it("Create bond", async () => {
+        it("Create new bond level.", async () => {
 
             assert.equal(this.bondLevelAddEvent.name, this.levelToAdd.name)
             assert.equal(this.bondLevelAddEvent.weight, this.levelToAdd.weight)
@@ -95,7 +98,7 @@ contract("BondManager", async (accounts) => {
             assert.equal(activeLevels.length, 5)
         })
 
-        */
+        
 
         it("Verify that bond level can be changed.", async () => {
             const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
@@ -106,12 +109,159 @@ contract("BondManager", async (accounts) => {
                 weight: "120"
             }    
 
-            await this.bond.changeBondLevel(levelID, changedLevel.name, changedLevel.basePrice, changedLevel.weight)
+            await this.manager.changeBondLevel(levelID, changedLevel.name, changedLevel.basePrice, changedLevel.weight)
+
+            // Checking event
 
             const events = await this.bond.getPastEvents('BondLevelChanged')
 
-            console.log(events)
+            // Only 1 event must be fired
+            assert.equal(events.length, 1)
+
+            const changeLevelEvent = events[0].returnValues
+
+            
+            assert.equal(changeLevelEvent.levelID.substring(0, 10), levelID)
+            assert.equal(changeLevelEvent.basePrice, changedLevel.basePrice)
+            assert.equal(changeLevelEvent.weight, changedLevel.weight)
+            assert.equal(changeLevelEvent.name, changedLevel.name)
+
+            // Checking mapping
+            const level = await this.bond.getBondLevel(levelID)
+
+            assert.equal(level.levelID, levelID)
+            assert.equal(level.active, true)
+            assert.equal(level.basePrice, changedLevel.basePrice)
+            assert.equal(level.weight, changedLevel.weight)
+            assert.equal(level.name, changedLevel.name)  
+            
+            //Verify that bond level is still in totalActiveBondLevels array
+            const activeLevels = await this.bond.getActiveBondLevels()
+
+            var found = false
+
+            for(var i = 0; i < activeLevels.length; i++) {
+                if(levelID == activeLevels[i]) {
+                    found = true
+                    break
+                }
+            }
+
+            assert(found, "Bond level is not in totalActiveBondLevels array.")
+            assert.equal(activeLevels.length, 5)
         })
+
+        
+
+        it("Verify that bond level can be deactivated.", async () => {
+            const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
+
+            await this.manager.deactivateBondLevel(levelID)
+
+            // Checking event
+
+            const events = await this.bond.getPastEvents('BondLevelDeactivated')
+
+            // Only 1 event must be fired
+            assert.equal(events.length, 1)
+
+            const deactivateLevelEvent = events[0].returnValues
+
+            assert.equal(deactivateLevelEvent.levelID.substring(0, 10), levelID)
+
+            //Check mapping active is false
+
+            assert(!(await this.bond.getBondLevel(levelID)).active, "Mapping active parameter is still true")
+
+            // Check it was removed from totalActiveBondLevels array
+
+            const activeLevels = await this.bond.getActiveBondLevels()
+
+            var found = false
+
+            for(var i = 0; i < activeLevels.length; i++) {
+                if(levelID == activeLevels[i]) {
+                    found = true
+                    break
+                }
+            }
+
+            assert(!found, "Bond level is in totalActiveBondLevels array.")
+        })
+
+        
+
+        it("Verify that bond level can be activated at index.", async () => {
+            const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
+
+            // Mapping must first be disabled in order to re-enable it.
+            await this.manager.deactivateBondLevel(levelID)
+
+            const index = 2
+
+            await this.manager.activateBondLevel(levelID, index)
+
+            // Checking event
+
+            const events = await this.bond.getPastEvents('BondLevelActivated')
+            
+            // Only 1 event must be fired
+            assert.equal(events.length, 1)
+
+            const activatedLevelEvent = events[0].returnValues
+
+            assert.equal(activatedLevelEvent.levelID.substring(0, 10), levelID)
+
+            //Check mapping active is true
+
+            assert((await this.bond.getBondLevel(levelID)).active, "Mapping active parameter is still false")
+
+            // Check it was removed from totalActiveBondLevels array
+
+            const activeLevels = await this.bond.getActiveBondLevels()
+
+            var found = false
+            var _index;
+
+            for(var i = 0; i < activeLevels.length; i++) {
+                if(levelID == activeLevels[i]) {
+                    found = true
+                    _index = i
+                    break
+                }
+            }
+
+            assert(found, "Bond level is not in totalActiveBondLevels array.")
+            assert.equal(_index, index)
+
+        })
+
+        
+
+        it("Verify that bond level can be rearranged at index.", async () => {
+            const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
+
+            const index = 1
+
+            await this.manager.rearrangeBondLevel(levelID, index)
+
+            const activeLevels = await this.bond.getActiveBondLevels()
+
+            var found = false
+            var _index;
+
+            for(var i = 0; i < activeLevels.length; i++) {
+                if(levelID == activeLevels[i]) {
+                    found = true
+                    _index = i
+                    break
+                }
+            }
+
+            assert(found, "Bond level is not in totalActiveBondLevels array.")
+            assert.equal(_index, index)
+        })
+  
 
     })
     
