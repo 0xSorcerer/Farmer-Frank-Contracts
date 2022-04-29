@@ -32,34 +32,87 @@ contract("BondManager", async (accounts) => {
         await this.bond.transferOwnership(this.manager.address)
     })  
 
+    
+
     describe("Ownership test", async () => {
         it("Correct ownership for fNFT Bond Contract.", async () => {
             assert.equal(await this.bond.owner(), this.manager.address)
         })
     })
 
+    
+
 
     describe("Bond level testing", async () => {
 
         beforeEach(async () => {
-             await this.manager.addBondLevel(this.levelToAdd.name, this.levelToAdd.basePrice, this.levelToAdd.weight)
-        })
-
-        it("Create bond", async () => {
+            await this.manager.addBondLevel(this.levelToAdd.name, this.levelToAdd.basePrice, this.levelToAdd.weight)
             const events = await this.bond.getPastEvents('NewBondLevel')
             assert.equal(events.length, 1)
-
-            const event = events[0].returnValues
-            this.levelToAddID = events[0].returnValues.levelID.substring(0, 9)
-
-            assert.equal(event.name, this.levelToAdd.name)
-            assert.equal(event.weight, this.levelToAdd.weight)
-            assert.equal(event.basePrice, this.levelToAdd.basePrice)
+            this.bondLevelAddEvent = events[0].returnValues
         })
 
-        it("Verify bond", async () => {
-            console.log(this.levelToAddID)
+        
+        /*
+
+        it("Create bond", async () => {
+
+            assert.equal(this.bondLevelAddEvent.name, this.levelToAdd.name)
+            assert.equal(this.bondLevelAddEvent.weight, this.levelToAdd.weight)
+            assert.equal(this.bondLevelAddEvent.basePrice, this.levelToAdd.basePrice)
         })
+        
+        
+
+        it("Verify that bond level has been added to mapping.", async () => {
+            const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
+
+            const level = await this.bond.getBondLevel(levelID)
+
+            assert.equal(level.levelID, levelID)
+            assert.equal(level.active, true)
+            assert.equal(level.basePrice, this.levelToAdd.basePrice)
+            assert.equal(level.weight, this.levelToAdd.weight)
+            assert.equal(level.name, this.levelToAdd.name)  
+        })
+        
+
+        it("Verify that bond level has been added to totalActiveBondLevels array.", async () => {
+            const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
+
+            const activeLevels = await this.bond.getActiveBondLevels()
+
+            var found = false
+
+            for(var i = 0; i < activeLevels.length; i++) {
+                if(levelID == activeLevels[i]) {
+                    found = true
+                    break
+                }
+            }
+
+            assert(found, "Bond level is not in totalActiveBondLevels array.")
+            assert.equal(activeLevels.length, 5)
+        })
+
+        */
+
+        it("Verify that bond level can be changed.", async () => {
+            const levelID = this.bondLevelAddEvent.levelID.substring(0, 10)
+
+            const changedLevel = {
+                name: "Level 5",
+                basePrice: "20000",
+                weight: "120"
+            }    
+
+            await this.bond.changeBondLevel(levelID, changedLevel.name, changedLevel.basePrice, changedLevel.weight)
+
+            const events = await this.bond.getPastEvents('BondLevelChanged')
+
+            console.log(events)
+        })
+
     })
     
     
