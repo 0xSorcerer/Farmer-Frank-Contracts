@@ -3,6 +3,8 @@ const web3 = new Web3()
 
 const ethers = require('ethers')
 
+const BN = require('bn.js');
+
 const truffleAssert = require('truffle-assertions');
 const { isTypeValueInput } = require('truffle/build/459.bundled');
 
@@ -38,7 +40,7 @@ contract("BondManager", async (accounts) => {
             assert.equal(await this.bond.owner(), this.manager.address)
         })
     })
-*/
+
     describe("Bond level tests.", async () => {
 
         beforeEach(async () => {
@@ -47,7 +49,7 @@ contract("BondManager", async (accounts) => {
             assert.equal(events.length, 1)
             this.bondLevelAddEvent = events[0].returnValues
         })
-/*
+
         it("Create new bond level.", async () => {
 
             assert.equal(this.bondLevelAddEvent.name, this.levelToAdd.name)
@@ -239,7 +241,7 @@ contract("BondManager", async (accounts) => {
             assert(found, "Bond level is not in totalActiveBondLevels array.")
             assert.equal(_index, index)
         })
-*/
+
         it("Verify that a maximum of 10 Bond levels can exist concurrently", async () => {
 
             const BOND_LEVEL_MAX = 10
@@ -252,7 +254,7 @@ contract("BondManager", async (accounts) => {
 
             await this.manager.addBondLevel(this.levelToAdd.name + "A", this.levelToAdd.basePrice, this.levelToAdd.weight)
 
-            /*
+            
 
             var catched = false
 
@@ -263,7 +265,38 @@ contract("BondManager", async (accounts) => {
             }
 
             assert(catched, "User was able to create more Bond levels than allowed.")
-            */
+            
         })
     })
+    */
+
+    describe("Create bond tests.", async () => {
+        beforeEach(async () => {
+            await this.token.approve(this.manager.address, "99999999999999999999999999999999999")
+            
+            const levelID = (await this.bond.getActiveBondLevels())[0]
+            await this.manager.createMultipleBondsWithTokens(levelID, 1)
+
+            const events = await this.bond.getPastEvents('BondCreated')
+            assert.equal(events.length, 1)
+            this.bondCreatedEvent = events[0].returnValues
+        })
+
+        it("Check Bond Creation.", async () => {
+            const bondObj = await this.bond.getBond(this.bondCreatedEvent.bondID)
+            assert.equal(this.bondCreatedEvent.bondID, ((await this.bond.totalSupply()) - 1))
+            assert.equal(this.bondCreatedEvent.levelID.substring(0, 10), bondObj.levelID)
+            assert.equal(this.bondCreatedEvent.account, accounts[0])
+
+            const price = (await this.manager.getPrice(bondObj.levelID))[0]
+            assert.equal(this.bondCreatedEvent.price, price.toString())
+            assert.equal(bondObj.unweightedShares, price.toString())
+
+            console.log(bondObj.weightedShares)
+            console.log(ethers.BigNumber.from(price).toString())
+            //assert.equal(bondObj.weightedShares, price.mul(bondObj.weight).div(100).toString())
+        })
+    })
+
+    
 })

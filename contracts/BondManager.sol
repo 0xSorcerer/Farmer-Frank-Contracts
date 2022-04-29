@@ -205,7 +205,8 @@ contract BondManager is Ownable, BondDiscountable {
 
         require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
-        baseToken.safeTransferFrom(_msgSender(), treasury, bondPrice * _amount);
+        //SET TREASURY
+        baseToken.safeTransferFrom(_msgSender(), address(this), bondPrice * _amount);
 
         totalUnweightedShares += bondPrice * _amount;
         totalWeightedShares += ((bondPrice * bond.getBondLevel(levelID).weight / WEIGHT_PRECISION) * _amount);
