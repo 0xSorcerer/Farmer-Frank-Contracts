@@ -40,7 +40,7 @@ module.exports = {
   networks: {
 
     ropsten: {
-      provider: () => new HDWalletProvider(process.env.PRIVATE_KEY, `https://ropsten.infura.io/v3/c63564d5fad8416ba9fddb16007a737c`),
+      provider: () => new HDWalletProvider(process.env.PRIVATE_KEY, ``),
       network_id: 3, // Ropsten's id
       gas: 8000000, // Ropsten has a lower block limit than mainnet
       confirmations: 2, // # of confs to wait between deployments. (default: 0)
