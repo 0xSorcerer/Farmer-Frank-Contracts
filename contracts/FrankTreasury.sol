@@ -28,36 +28,30 @@ interface IVeJoeStaking {
 contract RevenueSplitter {
     using SafeMath for uint256;
 
-    uint256 public _totalPriorityShares = 0;
-    uint256 public _totalShares = 0;
+    uint256 internal _totalPriorityShares = 0;
+    uint256 internal _totalShares = 0;
 
-    mapping(address => uint256) public _priorityShares;
-    mapping(address => uint256) public _shares;
+    mapping(address => uint256) internal _priorityShares;
+    mapping(address => uint256) internal _shares;
 
-    address[] public _priorityReceivers;
-    address[] public _receivers;
+    address[] internal _priorityReceivers;
+    address[] internal _receivers;
 
-    function _addReceiver(
-        address _account,
-        uint256 shares_,
-        bool _priority
-    ) internal {
+    uint256 private constant PERCENTAGE_PRECISION = 10**5;
+
+    function _addReceiver(address _account, uint256 shares_, bool _priority) internal {
+        require(shares_ > 0);
         if (_priority) {
-            _priorityShares[_account] == 0
-                ? _priorityReceivers.push(_account)
-                : ();
+            _priorityShares[_account] == 0 ? _priorityReceivers.push(_account) : ();
             _totalPriorityShares = SafeMath.add(_totalPriorityShares, shares_);
-            _priorityShares[_account] = SafeMath.add(
-                _priorityShares[_account],
-                shares_
-            );
+            _priorityShares[_account] = SafeMath.add(_priorityShares[_account], shares_);
         } else {
             _shares[_account] == 0 ? _receivers.push(_account) : ();
             _totalShares = SafeMath.add(_totalShares, shares_);
             _shares[_account] = SafeMath.add(_shares[_account], shares_);
         }
     }
-
+    
     function _removeReceiver(address _account, bool _priority) internal {
         if (_priority) {
             require(_priorityShares[_account] > 0);
@@ -93,9 +87,15 @@ contract RevenueSplitter {
             _receivers.pop();
         }
     }
+
+    function _changeReceiverShares(address _account, uint256 shares_, bool _priority) internal {
+        require(shares_ > 0);
+        _priority ? require(_priorityShares[_account] > 0) : require(_shares[_account] > 0);
+        _priority ? _priorityShares[_account] = shares_ : _shares[_account] = shares_;
+    }
 }
 
-contract FrankTreasury is Ownable {
+contract FrankTreasury is Ownable, RevenueSplitter {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -123,6 +123,18 @@ contract FrankTreasury is Ownable {
     uint256 revenue;
 
     Strategy public strategy;
+
+    function addReceiver(address _account, uint256 _shares, bool _priority) external onlyOwner {
+        _addReceiver(_account, _shares, _priority);
+    }
+
+    function removeReceiver(address _account, bool _priority) external onlyOwner {
+        _removeReceiver(_account, _priority);
+    }
+
+    function changeReceiverShares(address _account, uint256 _shares, bool _priority) external onlyOwner {
+        _changeReceiverShares(_account, _shares, _priority);
+    }
 
     function setStrategy(
         uint16[2] memory _DISTRIBUTION_BONDED_JOE,
