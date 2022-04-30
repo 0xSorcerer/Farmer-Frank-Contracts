@@ -25,6 +25,7 @@ interface IVeJoeStaking {
     function withdraw(uint256 _amount) external;
 }
 
+/*
 contract RevenueSplitter {
     using SafeMath for uint256;
 
@@ -94,8 +95,9 @@ contract RevenueSplitter {
         _priority ? _priorityShares[_account] = shares_ : _shares[_account] = shares_;
     }
 }
+*/
 
-contract FrankTreasury is Ownable, RevenueSplitter {
+contract FrankTreasury is Ownable {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -121,19 +123,59 @@ contract FrankTreasury is Ownable, RevenueSplitter {
     mapping(uint256 => bool) isPIDActive;
 
     uint256 revenue;
+    uint256 currentRevenue;
+
+    address private constant teamAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
+    address private constant investorAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
+    
+    uint256 private teamFee;
+    uint256 private investorFee; 
+    uint256 private FEE_PRECISION = 100_000;
+
+    IBondManager public bondManager;
 
     Strategy public strategy;
 
-    function addReceiver(address _account, uint256 _shares, bool _priority) external onlyOwner {
-        _addReceiver(_account, _shares, _priority);
+    constructor(address _bondManager) {
+        bondManager = IBondManager(_bondManager);
+
+        setTeamFee(2000);
+        setInvestorFee(1000);
     }
 
-    function removeReceiver(address _account, bool _priority) external onlyOwner {
-        _removeReceiver(_account, _priority);
+    function reinvest(uint256 _amount) private onlyOwner {
+        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
+
+        IStableJoeStaking(SJoeStaing).deposit(amounts[0]);
+        IVeJoeStaking(VeJoeStaking).deposit(amounts[1]);
+        addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
     }
 
-    function changeReceiverShares(address _account, uint256 _shares, bool _priority) external onlyOwner {
-        _changeReceiverShares(_account, _shares, _priority);
+    function distribute() external onlyOwner {
+        uint256 _currentRevenue = currentRevenue;
+        uint256 _teamRewards = _currentRevenue * teamFee / FEE_PRECISION;
+        uint256 _investorRewards = _currentRevenue * investorFee / FEE_PRECISION;
+
+        IERC20(baseToken).transferFrom(address(this), teamAddress, _teamRewards);
+        IERC20(baseToken).transferFrom(address(this), investorAddress, _investorRewards);
+
+        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.add(_teamRewards, _investorRewards));
+
+        uint256 _reinvestedAmount = _currentRevenue * strategy.PROPORTION_REINVESTMENTS / 100_000;
+        uint256 _rewardedAmount = _currentRevenue - _reinvestedAmount;
+
+        reinvest(_reinvestedAmount);
+
+        IERC20(baseToken).approve(address(bondManager), _rewardedAmount);
+        bondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
+    }
+
+    function setTeamFee(uint256 _fee) public onlyOwner {
+        teamFee = _fee;
+    }
+
+    function setInvestorFee(uint256 _fee) public onlyOwner() {
+        investorFee = _fee;
     }
 
     function setStrategy(
@@ -144,47 +186,33 @@ contract FrankTreasury is Ownable, RevenueSplitter {
         uint256 _LIQUIDITY_POOL_ID
     ) public onlyOwner {
         require(_DISTRIBUTION_BONDED_JOE.length == 2);
-        require(
-            _DISTRIBUTION_BONDED_JOE[0] + _DISTRIBUTION_BONDED_JOE[1] == 10000
-        );
+        require(_DISTRIBUTION_BONDED_JOE[0] + _DISTRIBUTION_BONDED_JOE[1] == 100_000);
         strategy.DISTRIBUTION_BONDED_JOE = _DISTRIBUTION_BONDED_JOE;
 
         require(_DISTRIBUTION_REINVESTMENTS.length == 3);
-        require(
-            _DISTRIBUTION_REINVESTMENTS[0] +
-                _DISTRIBUTION_REINVESTMENTS[1] +
-                _DISTRIBUTION_REINVESTMENTS[2] ==
-                10000
-        );
+        require(_DISTRIBUTION_REINVESTMENTS[0] + _DISTRIBUTION_REINVESTMENTS[1] + _DISTRIBUTION_REINVESTMENTS[2] == 100_000);
         strategy.DISTRIBUTION_REINVESTMENTS = _DISTRIBUTION_REINVESTMENTS;
 
-        require(_PROPORTION_REINVESTMENTS <= 10000);
+        require(_PROPORTION_REINVESTMENTS <= 100_000);
         strategy.PROPORTION_REINVESTMENTS = _PROPORTION_REINVESTMENTS;
 
         strategy.LIQUIDITY_POOL = _LIQUIDITY_POOL;
         strategy.LIQUIDITY_POOL_ID = _LIQUIDITY_POOL_ID;
     }
 
-    function bondDeposit(uint256 _amount) external /*Only for bond manager*/
-    {
+    function bondDeposit(uint256 _amount) external /*Only for bond manager*/ {
         address _sender = _msgSender();
 
         IERC20(baseToken).safeTransferFrom(_sender, address(this), _amount);
         bondedTokens += _amount;
 
-        uint256[] memory amounts = proportionDivide(
-            _amount,
-            strategy.DISTRIBUTION_BONDED_JOE
-        );
+        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_BONDED_JOE);
 
         IStableJoeStaking(SJoeStaing).deposit(amounts[0]);
         IVeJoeStaking(VeJoeStaking).deposit(amounts[1]);
     }
 
-    function addAndFarmLiquidity(uint256 _amount, address _pool)
-        public
-        onlyOwner
-    {
+    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner {
         IJoePair pair = IJoePair(_pool);
         IJoeRouter02 router = IJoeRouter02(JoeRouter);
 
@@ -201,17 +229,8 @@ contract FrankTreasury is Ownable, RevenueSplitter {
 
         if (token0 != baseToken) {
             path[1] = token0;
-            minAmountOut = ((router.getAmountsOut((_amount / 2), path)[1] *
-                95) / 100);
-            amountOutA = (
-                router.swapExactTokensForTokens(
-                    (_amount / 2),
-                    minAmountOut,
-                    path,
-                    address(this),
-                    (block.timestamp + 1000)
-                )
-            )[1];
+            minAmountOut = ((router.getAmountsOut((_amount / 2), path)[1] * 95) / 100);
+            amountOutA = (router.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
             IERC20(token0).approve(JoeRouter, 999999999999999999999999999999);
         } else {
             amountOutA = _amount / 2;
@@ -221,32 +240,14 @@ contract FrankTreasury is Ownable, RevenueSplitter {
 
         if (token1 != baseToken) {
             path[1] = token1;
-            minAmountOut = ((router.getAmountsOut((_amount / 2), path)[1] *
-                95) / 100);
-            amountOutB = (
-                router.swapExactTokensForTokens(
-                    (_amount / 2),
-                    minAmountOut,
-                    path,
-                    address(this),
-                    (block.timestamp + 1000)
-                )
-            )[1];
+            minAmountOut = ((router.getAmountsOut((_amount / 2), path)[1] * 95) / 100);
+            amountOutB = (router.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
             IERC20(token1).approve(JoeRouter, 999999999999999999999999999999);
         } else {
             amountOutB = _amount / 2;
         }
 
-        (, , uint256 liquidity) = router.addLiquidity(
-            token0,
-            token1,
-            amountOutA,
-            amountOutB,
-            ((amountOutA * 95) / 100),
-            ((amountOutB * 95) / 100),
-            address(this),
-            block.timestamp + 1000
-        );
+        (, , uint256 liquidity) = router.addLiquidity(token0, token1, amountOutA, amountOutB, ((amountOutA * 95) / 100), ((amountOutB * 95) / 100), address(this), block.timestamp + 1000);
 
         uint256 pid = getPoolIDFromLPToken(_pool);
 
@@ -255,10 +256,7 @@ contract FrankTreasury is Ownable, RevenueSplitter {
             isPIDActive[pid] = true;
         }
 
-        IERC20(_pool).approve(
-            address(boostedMC),
-            999999999999999999999999999999
-        );
+        IERC20(_pool).approve(address(boostedMC), 999999999999999999999999999999);
 
         boostedMC.deposit(pid, liquidity);
     }
@@ -293,39 +291,19 @@ contract FrankTreasury is Ownable, RevenueSplitter {
         boostedMC.withdraw(pid, _amount);
 
         //SAFETY SLIPPAGE
-        (uint256 amountA, uint256 amountB) = router.removeLiquidity(
-            pair.token0(),
-            pair.token1(),
-            _amount,
-            0,
-            0,
-            address(this),
-            block.timestamp
-        );
+        (uint256 amountA, uint256 amountB) = router.removeLiquidity(pair.token0(), pair.token1(), _amount, 0, 0, address(this), block.timestamp);
 
         address[] memory path = new address[](2);
         path[1] = baseToken;
 
         if (pair.token0() != baseToken) {
             path[0] = pair.token0();
-            router.swapExactTokensForTokens(
-                amountA,
-                (amountA * 95) / 100,
-                path,
-                address(this),
-                (block.timestamp + 1000)
-            );
+            router.swapExactTokensForTokens(amountA, (amountA * 95) / 100, path, address(this), (block.timestamp + 1000));
         }
 
         if (pair.token1() != baseToken) {
             path[0] = pair.token1();
-            router.swapExactTokensForTokens(
-                amountB,
-                (amountB * 95) / 100,
-                path,
-                address(this),
-                (block.timestamp + 1000)
-            );
+            router.swapExactTokensForTokens(amountB, (amountB * 95) / 100, path, address(this), (block.timestamp + 1000));
         }
     }
 
