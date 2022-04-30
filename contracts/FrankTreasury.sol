@@ -45,6 +45,9 @@ contract FrankTreasury is Ownable {
 
     uint256 bondedTokens;
 
+    uint256[] activePIDs;
+    mapping(uint256 => bool) isPIDActive;
+
     Strategy public strategy;
 
     function setStrategy(uint16[2] memory _DISTRIBUTION_BONDED_JOE, uint16[3] memory _DISTRIBUTION_REINVESTMENTS, uint16 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL, uint256 _LIQUIDITY_POOL_ID) public onlyOwner {
@@ -117,13 +120,43 @@ contract FrankTreasury is Ownable {
             amountOutB = _amount / 2;
         }
 
-        (uint256 amountA, uint256 amountB, uint256 liquidity) = router.addLiquidity(token0, token1, amountOutA, amountOutB, (amountOutA * 95 / 100), (amountOutB * 95 / 100), address(this), block.timestamp + 1000);
+        (, , uint256 liquidity) = router.addLiquidity(token0, token1, amountOutA, amountOutB, (amountOutA * 95 / 100), (amountOutB * 95 / 100), address(this), block.timestamp + 1000);
 
         uint256 pid = getPoolIDFromLPToken(_pool);
+
+        if(!isPIDActive[pid]) {
+            activePIDs.push(pid);
+            isPIDActive[pid] = true;
+        }
 
         IERC20(_pool).approve(address(boostedMC), 999999999999999999999999999999);
 
         boostedMC.deposit(pid, liquidity);
+    }
+
+    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner {
+        IJoePair pair = IJoePair(_pool);
+        IJoeRouter02 router = IJoeRouter02(JoeRouter);
+
+        uint256 pid = getPoolIDFromLPToken(_pool);
+
+        boostedMC.withdraw(pid, _amount);
+
+        //SAFETY SLIPPAGE
+        (uint256 amountA, uint256 amountB) = router.removeLiquidity(pair.token0(), pair.token1(), _amount, 0, 0, address(this), block.timestamp);
+        
+
+        /*
+                function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountA, uint256 amountB);
+        */
     }
 
     function getPoolIDFromLPToken(address _token) public view returns (uint256) {
