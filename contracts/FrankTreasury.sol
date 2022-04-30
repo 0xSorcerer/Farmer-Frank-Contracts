@@ -48,6 +48,8 @@ contract FrankTreasury is Ownable {
     uint256[] activePIDs;
     mapping(uint256 => bool) isPIDActive;
 
+    uint256 revenue;
+
     Strategy public strategy;
 
     function setStrategy(uint16[2] memory _DISTRIBUTION_BONDED_JOE, uint16[3] memory _DISTRIBUTION_REINVESTMENTS, uint16 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL, uint256 _LIQUIDITY_POOL_ID) public onlyOwner {
@@ -76,13 +78,6 @@ contract FrankTreasury is Ownable {
 
         IStableJoeStaking(SJoeStaing).deposit(amounts[0]);
         IVeJoeStaking(VeJoeStaking).deposit(amounts[1]);
-    }
-
-    function claim() external {
-        IStableJoeStaking(SJoeStaing).withdraw(0);
-        IVeJoeStaking(VeJoeStaking).claim();
-
-        //Liquidity claim
     }
 
     function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner {
@@ -140,23 +135,25 @@ contract FrankTreasury is Ownable {
 
         uint256 pid = getPoolIDFromLPToken(_pool);
 
+        harvestPool(pid);
+
         boostedMC.withdraw(pid, _amount);
 
         //SAFETY SLIPPAGE
         (uint256 amountA, uint256 amountB) = router.removeLiquidity(pair.token0(), pair.token1(), _amount, 0, 0, address(this), block.timestamp);
-        
 
-        /*
-                function removeLiquidity(
-        address tokenA,
-        address tokenB,
-        uint256 liquidity,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountA, uint256 amountB);
-        */
+        address[] memory path = new address[](2);
+        path[1] = baseToken;
+
+        if(pair.token0() != baseToken) {
+            path[0] = pair.token0();
+            router.swapExactTokensForTokens(amountA, amountA * 95 / 100, path, address(this), (block.timestamp + 1000));
+        }
+
+        if(pair.token1() != baseToken) {
+            path[0] = pair.token1();
+            router.swapExactTokensForTokens(amountB, amountB * 95 / 100, path, address(this), (block.timestamp + 1000));
+        }
     }
 
     function getPoolIDFromLPToken(address _token) public view returns (uint256) {
@@ -167,6 +164,19 @@ contract FrankTreasury is Ownable {
             }
         }
         revert();
+    }
+
+    function harvestPool(uint256 _pid) public {
+        uint256 revenueBefore = IERC20(baseToken).balanceOf(address(this));
+        boostedMC.deposit(_pid, 0);
+        revenue = IERC20(baseToken).balanceOf(address(this)) - revenueBefore;
+    }
+
+    function harvestJoe() external {
+        uint256 revenueBefore = IERC20(baseToken).balanceOf(address(this));
+        IStableJoeStaking(SJoeStaing).withdraw(0);
+        revenue = IERC20(baseToken).balanceOf(address(this)) - revenueBefore;
+        IVeJoeStaking(VeJoeStaking).claim();
     }
 
 
