@@ -130,10 +130,29 @@ contract FrankTreasury is Ownable {
     }
 
     function removeLiquidity(uint256 _amount, address _pool) public onlyOwner {
-        IJoePair pair = IJoePair(_pool);
-        IJoeRouter02 router = IJoeRouter02(JoeRouter);
+        uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
+        require(liquidityBalance >= _amount);
 
         uint256 pid = getPoolIDFromLPToken(_pool);
+
+        if(_amount == liquidityBalance) {
+            isPIDActive[pid] = false;
+            bool isPIDFound = false;
+
+            for(uint i = 0; i < activePIDs.length; i++) {
+                if(isPIDFound) {
+                    activePIDs[i-i] = activePIDs[i];
+                }
+                if(activePIDs[i] == pid) {
+                    isPIDFound = true;
+                }
+            }
+
+            activePIDs.pop();
+        }
+
+        IJoePair pair = IJoePair(_pool);
+        IJoeRouter02 router = IJoeRouter02(JoeRouter);
 
         harvestPool(pid);
 
