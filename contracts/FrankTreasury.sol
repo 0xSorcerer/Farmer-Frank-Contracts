@@ -35,7 +35,6 @@ contract FrankTreasury is Ownable {
         uint16[] DISTRIBUTION_REINVESTMENTS;
         uint16 PROPORTION_REINVESTMENTS;
         address LIQUIDITY_POOL;
-        uint256 LIQUIDITY_POOL_ID;
     }
     
     IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
@@ -62,36 +61,47 @@ contract FrankTreasury is Ownable {
     Strategy public strategy;
 
     constructor(address _bondManager) {
-        BondManager = IBondManager(_bondManager);
-
+        setBondManager(_bondManager);
         setTeamFee(2000);
         setInvestorFee(1000);
     }
 
-    //SETTERS
-
-    function setBondManager(address _bondManager) external onlyOwner {
+    /// @notice Change the bond manager address.
+    /// @param _bondManager New BondManager address.
+    function setBondManager(address _bondManager) public onlyOwner {
         BondManager = IBondManager(_bondManager);
     }
 
+    /// @notice Change the team fee.
+    /// @param _fee New fee.
+    /// @dev Out of 100_000 (FEE_PRECISION)
     function setTeamFee(uint256 _fee) public onlyOwner {
         teamFee = _fee;
     }
 
+    /// @notice Change the investor fee.
+    /// @param _fee New fee.
+    /// @dev Out of 100_000 (FEE_PRECISION)
     function setInvestorFee(uint256 _fee) public onlyOwner() {
         investorFee = _fee;
     }
 
+    /// @notice Change minimum amount of revenue required to call the distribute() function.
+    /// @param _threshold New threshold.
     function setDistributionThreshold(uint256 _threshold) external onlyOwner {
         DISTRIBUTE_THRESHOLD = _threshold;
     }
 
+    /// @notice Set the Treasury's strategy.
+    /// @param _DISTRIBUTION_BONDED_JOE 2 value array storing 1. proportion of BONDED JOE staked to sJOE 2. proportion staked to veJOE
+    /// @param _DISTRIBUTION_REINVESTMENTS 3 value array storing 1. proportion of REINVESTED REVENUE staked to sJOE 2. proportion staked to veJOE 3. proportion farmed in BMCJ
+    /// @param _PROPORTION_REINVESTMENTS Proportion of REVENUE reinvested within the protocol.
+    /// @param _LIQUIDITY_POOL Liquidity pool currently farmed on BMCJ 
     function setStrategy(
         uint16[2] memory _DISTRIBUTION_BONDED_JOE,
         uint16[3] memory _DISTRIBUTION_REINVESTMENTS,
         uint16 _PROPORTION_REINVESTMENTS,
-        address _LIQUIDITY_POOL,
-        uint256 _LIQUIDITY_POOL_ID
+        address _LIQUIDITY_POOL
     ) public onlyOwner {
         require(_DISTRIBUTION_BONDED_JOE.length == 2);
         require(_DISTRIBUTION_BONDED_JOE[0] + _DISTRIBUTION_BONDED_JOE[1] == 100_000);
@@ -105,11 +115,10 @@ contract FrankTreasury is Ownable {
         strategy.PROPORTION_REINVESTMENTS = _PROPORTION_REINVESTMENTS;
 
         strategy.LIQUIDITY_POOL = _LIQUIDITY_POOL;
-        strategy.LIQUIDITY_POOL_ID = _LIQUIDITY_POOL_ID;
     }
 
     /// @notice Distribute revenue to BondManager (where bond holders can later claim them).
-    /// @dev Anyone can call this function, if the current revenue is above a certain threshold. 
+    /// @dev Anyone can call this function, if the current revenue is above a certain threshold (DISTRIBUTE_THRESHOLD). 
     function distribute() external {
         harvest();
         require(currentRevenue >= DISTRIBUTE_THRESHOLD);
@@ -134,6 +143,8 @@ contract FrankTreasury is Ownable {
         _currentRevenue = 0;
     }
 
+    /// @notice Internal function used to reinvest part of revenue when calling distribute().
+    /// @param _amount Amount of JOE tokens to reinvest.
     function _reinvest(uint256 _amount) private {
         uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
 
@@ -142,9 +153,11 @@ contract FrankTreasury is Ownable {
 
         SJoeStaking.deposit(amounts[0]);
         VeJoeStaking.deposit(amounts[1]);
-        addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
+        _addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
     }
 
+    /// @notice Function called by BondManager contract everytime a bond is minted.
+    /// @param _amount Amount of tokens deposited to the treasury,
     function bondDeposit(uint256 _amount) external {
         address _sender = _msgSender();
         require(_sender == address(BondManager));
@@ -160,7 +173,10 @@ contract FrankTreasury is Ownable {
         VeJoeStaking.deposit(amounts[1]);
     }
 
-    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner {
+    /// @notice Convert treasury JOE to LP tokens and farm them on BMCJ.
+    /// @param _amount Amount of JOE tokens to farm.
+    /// @param _pool Boosted pool address.
+    function _addAndFarmLiquidity(uint256 _amount, address _pool) private {
         IJoePair pair = IJoePair(_pool);
 
         address token0 = pair.token0();
@@ -209,6 +225,16 @@ contract FrankTreasury is Ownable {
         BMCJ.deposit(pid, liquidity);
     }
 
+    /// @notice External onlyOwner implementation of _addAndFarmLiquidity.
+    /// @param _amount Amount of JOE tokens to farm.
+    /// @param _pool Boosted pool address.
+    function addAndFarmLiquidity(uint256 _amount, address _pool) external onlyOwner {
+        _addAndFarmLiquidity(_amount, _pool);
+    }
+
+    /// @notice Remove liquidity from Boosted pool and convert assets to JOE.
+    /// @param _amount Amount of LP tokens to remove from liquidity.
+    /// @param _pool Boosted pool address.
     function removeLiquidity(uint256 _amount, address _pool) external onlyOwner {
         uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
         require(liquidityBalance >= _amount);
@@ -256,6 +282,8 @@ contract FrankTreasury is Ownable {
         }
     }
 
+    /// @notice Get PID from LP token address.
+    /// @param _token LP token address. 
     function getPoolIDFromLPToken(address _token) internal view returns (uint256) {
         for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
             (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
@@ -275,6 +303,8 @@ contract FrankTreasury is Ownable {
         harvestJoe();
     }
  
+    /// @notice Harvest rewards from boosted pool.
+    /// @param _pid Pool PID. 
     function harvestPool(uint256 _pid) private {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         BMCJ.deposit(_pid, 0);
@@ -284,6 +314,7 @@ contract FrankTreasury is Ownable {
         currentRevenue += _revenue;
     }
 
+    /// @notice Harvest rewards from sJOE and harvest veJOE. 
     function harvestJoe() private {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         IStableJoeStaking(SJoeStaking).withdraw(0);
@@ -295,31 +326,34 @@ contract FrankTreasury is Ownable {
         IVeJoeStaking(VeJoeStaking).claim();
     }
 
-    function proportionDivide(uint256 amount, uint16[] memory proportions)
+    /// @notice Internal function to divide an amount into different proportions.
+    /// @param amount_ Amount to divide.
+    /// @param _proportions Array of the different proportions in which to divide amount_
+    function proportionDivide(uint256 amount_, uint16[] memory _proportions)
         private
         pure
-        returns (uint256[] memory amounts)
+        returns (uint256[] memory _amounts)
     {
         uint256 amountTotal;
         uint256 proportionTotal;
-        amounts = new uint256[](proportions.length);
+        _amounts = new uint256[](_proportions.length);
 
-        for (uint256 i = 0; i < proportions.length; i++) {
-            uint256 _amount = (amount * proportions[i]) / 10000;
+        for (uint256 i = 0; i < _proportions.length; i++) {
+            uint256 _amount = (amount_ * _proportions[i]) / 10000;
             amountTotal += _amount;
-            proportionTotal += proportions[i];
-            amounts[i] = _amount;
+            proportionTotal += _proportions[i];
+            _amounts[i] = _amount;
         }
 
         require(proportionTotal == 10000);
 
-        require(amountTotal <= amount);
+        require(amountTotal <= amount_);
 
-        if (amountTotal < amount) {
-            amounts[0] += (amount - amountTotal);
+        if (amountTotal < amount_) {
+            _amounts[0] += (amount_ - amountTotal);
         }
 
-        return amounts;
+        return _amounts;
     }
 
     function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
