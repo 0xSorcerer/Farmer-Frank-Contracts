@@ -49,14 +49,15 @@ contract FrankTreasury is Ownable {
     address private constant investorAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
     uint256 private constant FEE_PRECISION = 100_000;
     uint256 private teamFee;
-    uint256 private investorFee; 
-
-    uint256[] activePIDs;
-    mapping(uint256 => bool) isPIDActive;
-
+    uint256 private investorFee;
     uint256 bondedTokens;
     uint256 revenue;
     uint256 currentRevenue;
+
+    uint256 DISTRIBUTE_THRESHOLD = 5_000 * 10 ** 18; 
+
+    uint256[] activePIDs;
+    mapping(uint256 => bool) isPIDActive;
     
     Strategy public strategy;
 
@@ -81,6 +82,10 @@ contract FrankTreasury is Ownable {
         investorFee = _fee;
     }
 
+    function setDistributionThreshold(uint256 _threshold) external onlyOwner {
+        DISTRIBUTE_THRESHOLD = _threshold;
+    }
+
     function setStrategy(
         uint16[2] memory _DISTRIBUTION_BONDED_JOE,
         uint16[3] memory _DISTRIBUTION_REINVESTMENTS,
@@ -103,25 +108,11 @@ contract FrankTreasury is Ownable {
         strategy.LIQUIDITY_POOL_ID = _LIQUIDITY_POOL_ID;
     }
 
-
-
-
-
-
-
-    function _reinvest(uint256 _amount) private {
-        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
-
-        JOE.approve(address(SJoeStaking), amounts[0]);
-        JOE.approve(address(VeJoeStaking), amounts[0]);
-
-        SJoeStaking.deposit(amounts[0]);
-        VeJoeStaking.deposit(amounts[1]);
-        addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
-    }
-
-    function distribute() external onlyOwner {
+    /// @notice Distribute revenue to BondManager (where bond holders can later claim them).
+    /// @dev Anyone can call this function, if the current revenue is above a certain threshold. 
+    function distribute() external {
         harvest();
+        require(currentRevenue >= DISTRIBUTE_THRESHOLD);
 
         uint256 _currentRevenue = currentRevenue;
         uint256 _teamRewards = _currentRevenue * teamFee / FEE_PRECISION;
@@ -141,6 +132,17 @@ contract FrankTreasury is Ownable {
         BondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
 
         _currentRevenue = 0;
+    }
+
+    function _reinvest(uint256 _amount) private {
+        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
+
+        JOE.approve(address(SJoeStaking), amounts[0]);
+        JOE.approve(address(VeJoeStaking), amounts[0]);
+
+        SJoeStaking.deposit(amounts[0]);
+        VeJoeStaking.deposit(amounts[1]);
+        addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
     }
 
     function bondDeposit(uint256 _amount) external {
@@ -207,7 +209,7 @@ contract FrankTreasury is Ownable {
         BMCJ.deposit(pid, liquidity);
     }
 
-    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner {
+    function removeLiquidity(uint256 _amount, address _pool) external onlyOwner {
         uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
         require(liquidityBalance >= _amount);
 
@@ -254,7 +256,7 @@ contract FrankTreasury is Ownable {
         }
     }
 
-    function getPoolIDFromLPToken(address _token) public view returns (uint256) {
+    function getPoolIDFromLPToken(address _token) internal view returns (uint256) {
         for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
             (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
             if (_lp == _token) {
@@ -264,6 +266,8 @@ contract FrankTreasury is Ownable {
         revert();
     }
 
+    /// @notice Harvest rewards from sJOE and BMCJ farms
+    /// @dev Anyone can call this function
     function harvest() public {
         for(uint i = 0; i < activePIDs.length; i++) {
             harvestPool(activePIDs[i]);
@@ -317,4 +321,10 @@ contract FrankTreasury is Ownable {
 
         return amounts;
     }
+
+    function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
+        (bool success, bytes memory result) = target.call{value: value}(data);
+        return (success, result);
+    }
+
 }
