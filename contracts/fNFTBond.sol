@@ -84,7 +84,7 @@ contract fNFTBond is ERC721, Ownable {
     );
 
     constructor(string memory name, string memory symbol) ERC721(name, symbol) {
-        _setBaseURI("ipfs://QmeSjSinHpPnmXmspMjwiXyN6zS4E9zccariGR3jxcaWtq");
+        _setBaseURI("https://gist.githubusercontent.com/0xSorcerer/3a9caa1af932f7b4ea57b7a7ef73494c/raw/dfdaa22b1f6c5847e4ad07b46fb57aecdb5d3d99/gistfile1.json");
 
         //Create initial Bond levels
         _addBondLevelAtIndex("Level I", 10, 100, totalActiveBondLevels);
@@ -279,6 +279,8 @@ contract fNFTBond is ERC721, Ownable {
         return IDs;
     }
 
+    
+
     function tokenURI(uint256 _bondID)
         public
         view
@@ -289,12 +291,9 @@ contract fNFTBond is ERC721, Ownable {
     {
         string memory base = baseURI();
 
-        if (bytes(base).length == 0) {
-            return "";
-        }
-
-        return string(abi.encodePacked(base, "/", iToHex(abi.encodePacked(bonds[_bondID].levelID))));
+        return base;
     }
+    
 
     function iToHex(bytes memory buffer) internal pure returns (string memory) {
         bytes memory converted = new bytes(buffer.length * 2);
@@ -307,5 +306,13 @@ contract fNFTBond is ERC721, Ownable {
         }
 
         return string(abi.encodePacked("0x", converted));
+    }
+
+    /*
+    TESTING
+    */
+
+    function setURI(string memory _URI, uint256 _tokenID) external onlyOwner {
+        _setTokenURI(_tokenID, _URI);
     }
 }

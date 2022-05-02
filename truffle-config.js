@@ -24,7 +24,7 @@
 // const mnemonic = fs.readFileSync(".secret").toString().trim();
 
 const HDWalletProvider = require('@truffle/hdwallet-provider');
-require('dotenv').config()
+const env = require('./.env.json')
 
 module.exports = {
   /**
@@ -39,11 +39,21 @@ module.exports = {
 
   networks: {
 
-    ropsten: {
-      provider: () => new HDWalletProvider(process.env.PRIVATE_KEY, ``),
-      network_id: 3, // Ropsten's id
+    rinkeby: {
+      
+      provider: () => new HDWalletProvider(env.PRIVATE_KEY, env.RINKEBY_API),
+      network_id: 4, // Ropsten's id
       gas: 8000000, // Ropsten has a lower block limit than mainnet
-      confirmations: 2, // # of confs to wait between deployments. (default: 0)
+      confirmations: 0, // # of confs to wait between deployments. (default: 0)
+      timeoutBlocks: 200, // # of blocks before a deployment times out  (minimum/default: 50)
+      skipDryRun: false // Skip dry run before migrations? (default: false for public nets )
+    },
+
+    avalanche: {
+      provider: () => new HDWalletProvider(env.AVAX_PRIVATE_KEY, env.AVAX_API),
+      network_id: 43114, // Ropsten's id
+      gas: 8000000, // Ropsten has a lower block limit than mainnet
+      confirmations: 0, // # of confs to wait between deployments. (default: 0)
       timeoutBlocks: 200, // # of blocks before a deployment times out  (minimum/default: 50)
       skipDryRun: false // Skip dry run before migrations? (default: false for public nets )
     },
@@ -114,6 +124,11 @@ module.exports = {
        }
     }
   },
+
+  api_keys: {
+    etherscan: 'GXK6IQ7RVS4Y6D5GF3837YG3YYWGG71CP1'
+  },
+  plugins: ['truffle-plugin-verify']
 
   // Truffle DB is currently disabled by default; to enable it, change enabled:
   // false to enabled: true. The default storage location can also be

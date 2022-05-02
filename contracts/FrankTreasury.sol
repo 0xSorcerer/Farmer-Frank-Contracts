@@ -36,26 +36,22 @@ contract FrankTreasury is Ownable {
         address LIQUIDITY_POOL;
         uint256 LIQUIDITY_POOL_ID;
     }
-
-    address SJoeStaing;
-    address VeJoeStaking;
-    address JoeRouter;
-    address baseToken;
-
-    IBoostedMasterChefJoe boostedMC =
-        IBoostedMasterChefJoe(0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7);
-
-    uint256 bondedTokens;
+    
+    IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IERC20 public constant JOE = IERC20(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
 
     uint256[] activePIDs;
     mapping(uint256 => bool) isPIDActive;
 
-    uint256 revenue;
-    uint256 currentRevenue;
-
     address private constant teamAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
     address private constant investorAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
     
+    uint256 bondedTokens;
+    uint256 revenue;
+    uint256 currentRevenue;
     uint256 private teamFee;
     uint256 private investorFee; 
     uint256 private FEE_PRECISION = 100_000;
@@ -74,18 +70,23 @@ contract FrankTreasury is Ownable {
     function reinvest(uint256 _amount) private onlyOwner {
         uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
 
-        IStableJoeStaking(SJoeStaing).deposit(amounts[0]);
-        IVeJoeStaking(VeJoeStaking).deposit(amounts[1]);
+        JOE.approve(address(SJoeStaking), amounts[0]);
+        JOE.approve(address(VeJoeStaking), amounts[0]);
+
+        SJoeStaking.deposit(amounts[0]);
+        VeJoeStaking.deposit(amounts[1]);
         addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
     }
 
     function distribute() external onlyOwner {
+        harvest();
+
         uint256 _currentRevenue = currentRevenue;
         uint256 _teamRewards = _currentRevenue * teamFee / FEE_PRECISION;
         uint256 _investorRewards = _currentRevenue * investorFee / FEE_PRECISION;
 
-        IERC20(baseToken).transferFrom(address(this), teamAddress, _teamRewards);
-        IERC20(baseToken).transferFrom(address(this), investorAddress, _investorRewards);
+        JOE.transferFrom(address(this), teamAddress, _teamRewards);
+        JOE.transferFrom(address(this), investorAddress, _investorRewards);
 
         _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.add(_teamRewards, _investorRewards));
 
@@ -94,8 +95,10 @@ contract FrankTreasury is Ownable {
 
         reinvest(_reinvestedAmount);
 
-        IERC20(baseToken).approve(address(bondManager), _rewardedAmount);
+        JOE.approve(address(bondManager), _rewardedAmount);
         bondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
+
+        _currentRevenue = 0;
     }
 
     function setTeamFee(uint256 _fee) public onlyOwner {
@@ -131,51 +134,53 @@ contract FrankTreasury is Ownable {
     function bondDeposit(uint256 _amount) external /*Only for bond manager*/ {
         address _sender = _msgSender();
 
-        IERC20(baseToken).safeTransferFrom(_sender, address(this), _amount);
+        JOE.safeTransferFrom(_sender, address(this), _amount);
         bondedTokens += _amount;
 
         uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_BONDED_JOE);
 
-        IStableJoeStaking(SJoeStaing).deposit(amounts[0]);
-        IVeJoeStaking(VeJoeStaking).deposit(amounts[1]);
+        JOE.approve(address(SJoeStaking), amounts[0]);
+        JOE.approve(address(VeJoeStaking), amounts[1]);
+        SJoeStaking.deposit(amounts[0]);
+        VeJoeStaking.deposit(amounts[1]);
     }
 
     function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner {
         IJoePair pair = IJoePair(_pool);
-        IJoeRouter02 router = IJoeRouter02(JoeRouter);
-
-        IERC20(baseToken).approve(JoeRouter, 999999999999999999999999999999);
 
         address token0 = pair.token0();
         address token1 = pair.token1();
 
         address[] memory path = new address[](2);
-        path[0] = baseToken;
+        path[0] = address(JOE);
 
         uint256 minAmountOut;
         uint256 amountOutA;
 
-        if (token0 != baseToken) {
+        if (token0 != address(JOE)) {
+            JOE.approve(address(TraderJoeRouter), (_amount/2));
             path[1] = token0;
-            minAmountOut = ((router.getAmountsOut((_amount / 2), path)[1] * 95) / 100);
-            amountOutA = (router.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
-            IERC20(token0).approve(JoeRouter, 999999999999999999999999999999);
+            minAmountOut = ((TraderJoeRouter.getAmountsOut((_amount / 2), path)[1] * 95) / 100);
+            amountOutA = (TraderJoeRouter.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
         } else {
             amountOutA = _amount / 2;
         }
 
         uint256 amountOutB;
 
-        if (token1 != baseToken) {
+        if (token1 != address(JOE)) {
+            JOE.approve(address(TraderJoeRouter), (_amount/2));
             path[1] = token1;
-            minAmountOut = ((router.getAmountsOut((_amount / 2), path)[1] * 95) / 100);
-            amountOutB = (router.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
-            IERC20(token1).approve(JoeRouter, 999999999999999999999999999999);
+            minAmountOut = ((TraderJoeRouter.getAmountsOut((_amount / 2), path)[1] * 95) / 100);
+            amountOutB = (TraderJoeRouter.swapExactTokensForTokens((_amount / 2), minAmountOut, path, address(this), (block.timestamp + 1000)))[1];
         } else {
             amountOutB = _amount / 2;
         }
 
-        (, , uint256 liquidity) = router.addLiquidity(token0, token1, amountOutA, amountOutB, ((amountOutA * 95) / 100), ((amountOutB * 95) / 100), address(this), block.timestamp + 1000);
+        IERC20(token0).approve(address(TraderJoeRouter), amountOutA);
+        IERC20(token1).approve(address(TraderJoeRouter), amountOutB);
+
+        (, , uint256 liquidity) = TraderJoeRouter.addLiquidity(token0, token1, amountOutA, amountOutB, ((amountOutA * 95) / 100), ((amountOutB * 95) / 100), address(this), block.timestamp + 1000);
 
         uint256 pid = getPoolIDFromLPToken(_pool);
 
@@ -184,9 +189,9 @@ contract FrankTreasury is Ownable {
             isPIDActive[pid] = true;
         }
 
-        IERC20(_pool).approve(address(boostedMC), 999999999999999999999999999999);
+        IERC20(_pool).approve(address(BMCJ), liquidity);
 
-        boostedMC.deposit(pid, liquidity);
+        BMCJ.deposit(pid, liquidity);
     }
 
     function removeLiquidity(uint256 _amount, address _pool) public onlyOwner {
@@ -212,36 +217,33 @@ contract FrankTreasury is Ownable {
         }
 
         IJoePair pair = IJoePair(_pool);
-        IJoeRouter02 router = IJoeRouter02(JoeRouter);
 
         harvestPool(pid);
 
-        boostedMC.withdraw(pid, _amount);
+        BMCJ.withdraw(pid, _amount);
 
         //SAFETY SLIPPAGE
-        (uint256 amountA, uint256 amountB) = router.removeLiquidity(pair.token0(), pair.token1(), _amount, 0, 0, address(this), block.timestamp);
+        (uint256 amountA, uint256 amountB) = TraderJoeRouter.removeLiquidity(pair.token0(), pair.token1(), _amount, 0, 0, address(this), block.timestamp);
 
         address[] memory path = new address[](2);
-        path[1] = baseToken;
+        path[1] = address(JOE);
 
-        if (pair.token0() != baseToken) {
+        if (pair.token0() != address(JOE)) {
+            IERC20(pair.token0()).approve(address(TraderJoeRouter), amountA);
             path[0] = pair.token0();
-            router.swapExactTokensForTokens(amountA, (amountA * 95) / 100, path, address(this), (block.timestamp + 1000));
+            TraderJoeRouter.swapExactTokensForTokens(amountA, (amountA * 95) / 100, path, address(this), (block.timestamp + 1000));
         }
 
-        if (pair.token1() != baseToken) {
+        if (pair.token1() != address(JOE)) {
+            IERC20(pair.token1()).approve(address(TraderJoeRouter), amountB);
             path[0] = pair.token1();
-            router.swapExactTokensForTokens(amountB, (amountB * 95) / 100, path, address(this), (block.timestamp + 1000));
+            TraderJoeRouter.swapExactTokensForTokens(amountB, (amountB * 95) / 100, path, address(this), (block.timestamp + 1000));
         }
     }
 
-    function getPoolIDFromLPToken(address _token)
-        public
-        view
-        returns (uint256)
-    {
-        for (uint256 i = 0; i < boostedMC.poolLength(); i++) {
-            (address _lp, , , , , , , , ) = boostedMC.poolInfo(i);
+    function getPoolIDFromLPToken(address _token) public view returns (uint256) {
+        for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
+            (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
             if (_lp == _token) {
                 return i;
             }
@@ -249,16 +251,23 @@ contract FrankTreasury is Ownable {
         revert();
     }
 
+    function harvest() public {
+        for(uint i = 0; i < activePIDs.length; i++) {
+            harvestPool(activePIDs[i]);
+        }
+        harvestJoe();
+    }
+ 
     function harvestPool(uint256 _pid) public {
-        uint256 revenueBefore = IERC20(baseToken).balanceOf(address(this));
-        boostedMC.deposit(_pid, 0);
-        revenue = IERC20(baseToken).balanceOf(address(this)) - revenueBefore;
+        uint256 balanceBefore = JOE.balanceOf(address(this));
+        BMCJ.deposit(_pid, 0);
+        revenue += JOE.balanceOf(address(this)) - balanceBefore;
     }
 
-    function harvestJoe() external {
-        uint256 revenueBefore = IERC20(baseToken).balanceOf(address(this));
-        IStableJoeStaking(SJoeStaing).withdraw(0);
-        revenue = IERC20(baseToken).balanceOf(address(this)) - revenueBefore;
+    function harvestJoe() public {
+        uint256 balanceBefore = JOE.balanceOf(address(this));
+        IStableJoeStaking(SJoeStaking).withdraw(0);
+        revenue += JOE.balanceOf(address(this)) - balanceBefore;
         IVeJoeStaking(VeJoeStaking).claim();
     }
 
