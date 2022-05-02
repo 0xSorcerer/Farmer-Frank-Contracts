@@ -2,7 +2,6 @@
 
 pragma solidity ^0.8.0;
 
-import "./other/Ownable.sol";
 import "./libraries/SafeMath.sol";
 import "./libraries/Address.sol";
 import "./interfaces/IBondManager.sol";
@@ -10,6 +9,7 @@ import "./libraries/SafeERC20.sol";
 import "./interfaces/IJoeROuter02.sol";
 import "./interfaces/IBoostedMasterChefJoe.sol";
 import "./interfaces/IJoePair.sol";
+import "./other/Ownable.sol";
 
 interface IStableJoeStaking {
     function deposit(uint256 _amount) external;
@@ -26,6 +26,7 @@ interface IVeJoeStaking {
 }
 
 contract FrankTreasury is Ownable {
+
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -42,63 +43,34 @@ contract FrankTreasury is Ownable {
     IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
     IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
     IERC20 public constant JOE = IERC20(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IBondManager public BondManager;
+
+    address private constant teamAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
+    address private constant investorAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
+    uint256 private constant FEE_PRECISION = 100_000;
+    uint256 private teamFee;
+    uint256 private investorFee; 
 
     uint256[] activePIDs;
     mapping(uint256 => bool) isPIDActive;
 
-    address private constant teamAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
-    address private constant investorAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
-    
     uint256 bondedTokens;
     uint256 revenue;
     uint256 currentRevenue;
-    uint256 private teamFee;
-    uint256 private investorFee; 
-    uint256 private FEE_PRECISION = 100_000;
-
-    IBondManager public bondManager;
-
+    
     Strategy public strategy;
 
     constructor(address _bondManager) {
-        bondManager = IBondManager(_bondManager);
+        BondManager = IBondManager(_bondManager);
 
         setTeamFee(2000);
         setInvestorFee(1000);
     }
 
-    function reinvest(uint256 _amount) private onlyOwner {
-        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
+    //SETTERS
 
-        JOE.approve(address(SJoeStaking), amounts[0]);
-        JOE.approve(address(VeJoeStaking), amounts[0]);
-
-        SJoeStaking.deposit(amounts[0]);
-        VeJoeStaking.deposit(amounts[1]);
-        addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
-    }
-
-    function distribute() external onlyOwner {
-        harvest();
-
-        uint256 _currentRevenue = currentRevenue;
-        uint256 _teamRewards = _currentRevenue * teamFee / FEE_PRECISION;
-        uint256 _investorRewards = _currentRevenue * investorFee / FEE_PRECISION;
-
-        JOE.transferFrom(address(this), teamAddress, _teamRewards);
-        JOE.transferFrom(address(this), investorAddress, _investorRewards);
-
-        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.add(_teamRewards, _investorRewards));
-
-        uint256 _reinvestedAmount = _currentRevenue * strategy.PROPORTION_REINVESTMENTS / 100_000;
-        uint256 _rewardedAmount = _currentRevenue - _reinvestedAmount;
-
-        reinvest(_reinvestedAmount);
-
-        JOE.approve(address(bondManager), _rewardedAmount);
-        bondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
-
-        _currentRevenue = 0;
+    function setBondManager(address _bondManager) external onlyOwner {
+        BondManager = IBondManager(_bondManager);
     }
 
     function setTeamFee(uint256 _fee) public onlyOwner {
@@ -131,8 +103,49 @@ contract FrankTreasury is Ownable {
         strategy.LIQUIDITY_POOL_ID = _LIQUIDITY_POOL_ID;
     }
 
-    function bondDeposit(uint256 _amount) external /*Only for bond manager*/ {
+
+
+
+
+
+
+    function _reinvest(uint256 _amount) private {
+        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
+
+        JOE.approve(address(SJoeStaking), amounts[0]);
+        JOE.approve(address(VeJoeStaking), amounts[0]);
+
+        SJoeStaking.deposit(amounts[0]);
+        VeJoeStaking.deposit(amounts[1]);
+        addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
+    }
+
+    function distribute() external onlyOwner {
+        harvest();
+
+        uint256 _currentRevenue = currentRevenue;
+        uint256 _teamRewards = _currentRevenue * teamFee / FEE_PRECISION;
+        uint256 _investorRewards = _currentRevenue * investorFee / FEE_PRECISION;
+
+        JOE.safeTransferFrom(address(this), teamAddress, _teamRewards);
+        JOE.safeTransferFrom(address(this), investorAddress, _investorRewards);
+
+        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.add(_teamRewards, _investorRewards));
+
+        uint256 _reinvestedAmount = _currentRevenue * strategy.PROPORTION_REINVESTMENTS / 100_000;
+        uint256 _rewardedAmount = _currentRevenue - _reinvestedAmount;
+
+        _reinvest(_reinvestedAmount);
+
+        JOE.approve(address(BondManager), _rewardedAmount);
+        BondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
+
+        _currentRevenue = 0;
+    }
+
+    function bondDeposit(uint256 _amount) external {
         address _sender = _msgSender();
+        require(_sender == address(BondManager));
 
         JOE.safeTransferFrom(_sender, address(this), _amount);
         bondedTokens += _amount;
@@ -258,21 +271,28 @@ contract FrankTreasury is Ownable {
         harvestJoe();
     }
  
-    function harvestPool(uint256 _pid) public {
+    function harvestPool(uint256 _pid) private {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         BMCJ.deposit(_pid, 0);
-        revenue += JOE.balanceOf(address(this)) - balanceBefore;
+        uint256 _revenue = JOE.balanceOf(address(this)) - balanceBefore;
+
+        revenue += _revenue;
+        currentRevenue += _revenue;
     }
 
-    function harvestJoe() public {
+    function harvestJoe() private {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         IStableJoeStaking(SJoeStaking).withdraw(0);
-        revenue += JOE.balanceOf(address(this)) - balanceBefore;
+        uint256 _revenue = JOE.balanceOf(address(this)) - balanceBefore;
+
+        revenue += _revenue;
+        currentRevenue += _revenue; 
+
         IVeJoeStaking(VeJoeStaking).claim();
     }
 
     function proportionDivide(uint256 amount, uint16[] memory proportions)
-        internal
+        private
         pure
         returns (uint256[] memory amounts)
     {
