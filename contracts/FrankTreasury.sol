@@ -97,12 +97,7 @@ contract FrankTreasury is Ownable {
     /// @param _DISTRIBUTION_REINVESTMENTS 3 value array storing 1. proportion of REINVESTED REVENUE staked to sJOE 2. proportion staked to veJOE 3. proportion farmed in BMCJ
     /// @param _PROPORTION_REINVESTMENTS Proportion of REVENUE reinvested within the protocol.
     /// @param _LIQUIDITY_POOL Liquidity pool currently farmed on BMCJ 
-    function setStrategy(
-        uint16[2] memory _DISTRIBUTION_BONDED_JOE,
-        uint16[3] memory _DISTRIBUTION_REINVESTMENTS,
-        uint16 _PROPORTION_REINVESTMENTS,
-        address _LIQUIDITY_POOL
-    ) public onlyOwner {
+    function setStrategy(uint16[2] memory _DISTRIBUTION_BONDED_JOE, uint16[3] memory _DISTRIBUTION_REINVESTMENTS, uint16 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL) public onlyOwner {
         require(_DISTRIBUTION_BONDED_JOE.length == 2);
         require(_DISTRIBUTION_BONDED_JOE[0] + _DISTRIBUTION_BONDED_JOE[1] == 100_000);
         strategy.DISTRIBUTION_BONDED_JOE = _DISTRIBUTION_BONDED_JOE;
@@ -329,11 +324,7 @@ contract FrankTreasury is Ownable {
     /// @notice Internal function to divide an amount into different proportions.
     /// @param amount_ Amount to divide.
     /// @param _proportions Array of the different proportions in which to divide amount_
-    function proportionDivide(uint256 amount_, uint16[] memory _proportions)
-        private
-        pure
-        returns (uint256[] memory _amounts)
-    {
+    function proportionDivide(uint256 amount_, uint16[] memory _proportions) private pure returns (uint256[] memory _amounts) {
         uint256 amountTotal;
         uint256 proportionTotal;
         _amounts = new uint256[](_proportions.length);
