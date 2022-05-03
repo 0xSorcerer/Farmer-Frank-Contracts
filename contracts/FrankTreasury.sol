@@ -47,11 +47,10 @@ contract FrankTreasury is Ownable {
     address private constant teamAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
     address private constant investorAddress = 0x1Bf56B7C132B5cC920236AE629C8A93d9E7831e7;
     uint256 private constant FEE_PRECISION = 100_000;
-    uint256 private teamFee;
-    uint256 private investorFee;
+    uint256 private internalFee;
     uint256 bondedTokens;
-    uint256 revenue;
     uint256 currentRevenue;
+    uint256 totalRevenue;
 
     uint256 DISTRIBUTE_THRESHOLD = 5_000 * 10 ** 18; 
 
@@ -62,8 +61,7 @@ contract FrankTreasury is Ownable {
 
     constructor(address _bondManager) {
         setBondManager(_bondManager);
-        setTeamFee(2000);
-        setInvestorFee(1000);
+        setFee(2000);
     }
 
     /// @notice Change the bond manager address.
@@ -72,18 +70,11 @@ contract FrankTreasury is Ownable {
         BondManager = IBondManager(_bondManager);
     }
 
-    /// @notice Change the team fee.
+    /// @notice Change the fee for team and investors.
     /// @param _fee New fee.
-    /// @dev Out of 100_000 (FEE_PRECISION)
-    function setTeamFee(uint256 _fee) public onlyOwner {
-        teamFee = _fee;
-    }
-
-    /// @notice Change the investor fee.
-    /// @param _fee New fee.
-    /// @dev Out of 100_000 (FEE_PRECISION)
-    function setInvestorFee(uint256 _fee) public onlyOwner() {
-        investorFee = _fee;
+    /// @dev Team and investors will have the same fee.
+    function setFee(uint256 _fee) public onlyOwner {
+        internalFee = _fee;
     }
 
     /// @notice Change minimum amount of revenue required to call the distribute() function.
@@ -112,20 +103,19 @@ contract FrankTreasury is Ownable {
         strategy.LIQUIDITY_POOL = _LIQUIDITY_POOL;
     }
 
-    /// @notice Distribute revenue to BondManager (where bond holders can later claim them).
+    /// @notice Distribute revenue to BondManager (where bond holders can later claim rewards and shares).
     /// @dev Anyone can call this function, if the current revenue is above a certain threshold (DISTRIBUTE_THRESHOLD). 
     function distribute() external {
         harvest();
         require(currentRevenue >= DISTRIBUTE_THRESHOLD);
 
         uint256 _currentRevenue = currentRevenue;
-        uint256 _teamRewards = _currentRevenue * teamFee / FEE_PRECISION;
-        uint256 _investorRewards = _currentRevenue * investorFee / FEE_PRECISION;
+        uint256 _feeAmount = _currentRevenue * internalFee / FEE_PRECISION;
 
-        JOE.safeTransferFrom(address(this), teamAddress, _teamRewards);
-        JOE.safeTransferFrom(address(this), investorAddress, _investorRewards);
+        JOE.safeTransferFrom(address(this), teamAddress, _feeAmount);
+        JOE.safeTransferFrom(address(this), investorAddress, _feeAmount);
 
-        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.add(_teamRewards, _investorRewards));
+        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.mul(_feeAmount, 2));
 
         uint256 _reinvestedAmount = _currentRevenue * strategy.PROPORTION_REINVESTMENTS / 100_000;
         uint256 _rewardedAmount = _currentRevenue - _reinvestedAmount;
@@ -135,7 +125,8 @@ contract FrankTreasury is Ownable {
         JOE.approve(address(BondManager), _rewardedAmount);
         BondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
 
-        _currentRevenue = 0;
+        totalRevenue += currentRevenue;
+        currentRevenue = 0;
     }
 
     /// @notice Internal function used to reinvest part of revenue when calling distribute().
@@ -144,7 +135,7 @@ contract FrankTreasury is Ownable {
         uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
 
         JOE.approve(address(SJoeStaking), amounts[0]);
-        JOE.approve(address(VeJoeStaking), amounts[0]);
+        JOE.approve(address(VeJoeStaking), amounts[1]);
 
         SJoeStaking.deposit(amounts[0]);
         VeJoeStaking.deposit(amounts[1]);
@@ -172,6 +163,8 @@ contract FrankTreasury is Ownable {
     /// @param _amount Amount of JOE tokens to farm.
     /// @param _pool Boosted pool address.
     function _addAndFarmLiquidity(uint256 _amount, address _pool) private {
+        harvest();
+
         IJoePair pair = IJoePair(_pool);
 
         address token0 = pair.token0();
@@ -223,6 +216,8 @@ contract FrankTreasury is Ownable {
     /// @notice External onlyOwner implementation of _addAndFarmLiquidity.
     /// @param _amount Amount of JOE tokens to farm.
     /// @param _pool Boosted pool address.
+    /// @dev Used to reallocate protocol owned liquidity. First liquidity from a pool is removed with removeLiquidity() and then it is migrated to another pool
+    /// through this function. 
     function addAndFarmLiquidity(uint256 _amount, address _pool) external onlyOwner {
         _addAndFarmLiquidity(_amount, _pool);
     }
@@ -231,6 +226,8 @@ contract FrankTreasury is Ownable {
     /// @param _amount Amount of LP tokens to remove from liquidity.
     /// @param _pool Boosted pool address.
     function removeLiquidity(uint256 _amount, address _pool) external onlyOwner {
+        harvest();
+
         uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
         require(liquidityBalance >= _amount);
 
@@ -277,18 +274,6 @@ contract FrankTreasury is Ownable {
         }
     }
 
-    /// @notice Get PID from LP token address.
-    /// @param _token LP token address. 
-    function getPoolIDFromLPToken(address _token) internal view returns (uint256) {
-        for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
-            (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
-            if (_lp == _token) {
-                return i;
-            }
-        }
-        revert();
-    }
-
     /// @notice Harvest rewards from sJOE and BMCJ farms
     /// @dev Anyone can call this function
     function harvest() public {
@@ -304,8 +289,6 @@ contract FrankTreasury is Ownable {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         BMCJ.deposit(_pid, 0);
         uint256 _revenue = JOE.balanceOf(address(this)) - balanceBefore;
-
-        revenue += _revenue;
         currentRevenue += _revenue;
     }
 
@@ -314,11 +297,14 @@ contract FrankTreasury is Ownable {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         IStableJoeStaking(SJoeStaking).withdraw(0);
         uint256 _revenue = JOE.balanceOf(address(this)) - balanceBefore;
-
-        revenue += _revenue;
         currentRevenue += _revenue; 
 
         IVeJoeStaking(VeJoeStaking).claim();
+    }
+
+    function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
+        (bool success, bytes memory result) = target.call{value: value}(data);
+        return (success, result);
     }
 
     /// @notice Internal function to divide an amount into different proportions.
@@ -347,9 +333,16 @@ contract FrankTreasury is Ownable {
         return _amounts;
     }
 
-    function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
-        (bool success, bytes memory result) = target.call{value: value}(data);
-        return (success, result);
+    /// @notice Get PID from LP token address.
+    /// @param _token LP token address. 
+    function getPoolIDFromLPToken(address _token) internal view returns (uint256) {
+        for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
+            (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
+            if (_lp == _token) {
+                return i;
+            }
+        }
+        revert();
     }
 
 }

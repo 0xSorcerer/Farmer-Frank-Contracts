@@ -123,6 +123,9 @@ contract BondManager is Ownable, BondDiscountable {
     );
 
     constructor(address _bond, address _baseToken) {
+        require(_bond != address(0));
+        require(_baseToken != address(0));
+        
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
     }

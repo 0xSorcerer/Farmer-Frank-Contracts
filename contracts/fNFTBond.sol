@@ -94,6 +94,7 @@ contract fNFTBond is ERC721, Ownable {
     }
 
     function linkBondManager(address _bondManager) external onlyOwner {
+        require(_bondManager != address(0), "fNFT Bond: Bond manager can't be set to the 0 address.");
         bondManager = IBondManager(_bondManager);
     }
 
@@ -194,14 +195,16 @@ contract fNFTBond is ERC721, Ownable {
     }
 
     function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _price /*onlyOwner*/) external {
+        require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
         require(bondLevels[levelID].active, "A08");
         require(_amount <= 20, "A09");
+        
 
         uint16 _weight = bondLevels[levelID].weight;
         uint256 _unweightedShares = _price;
         uint256 _weightedShares = (_price * _weight) / WEIGHT_PRECISION;
-        uint256 _shareDebt = 0;
-        uint256 _rewardDebt = 0;
+        uint256 _shareDebt = SafeMath.div(SafeMath.mul(_unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
+        uint256 _rewardDebt = SafeMath.div(SafeMath.mul(_weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
 
         uint48 timestamp = uint48(block.timestamp);
 
@@ -226,6 +229,7 @@ contract fNFTBond is ERC721, Ownable {
     }
 
     function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external onlyIfExists(_bondID) /*onlyOwner*/ {
+        require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
         require(ownerOf(_bondID) == _account);
 
         Bond storage bond = bonds[_bondID];
@@ -279,8 +283,6 @@ contract fNFTBond is ERC721, Ownable {
         return IDs;
     }
 
-    
-
     function tokenURI(uint256 _bondID)
         public
         view
@@ -294,7 +296,6 @@ contract fNFTBond is ERC721, Ownable {
         return base;
     }
     
-
     function iToHex(bytes memory buffer) internal pure returns (string memory) {
         bytes memory converted = new bytes(buffer.length * 2);
 
