@@ -16,6 +16,10 @@ import "./interfaces/IBondManager.sol";
 // ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
 // Author: @0xSorcerer
 
+/// @notice Users are not supposed to interract with this contract. Most functions are marked
+/// as onlyOwner, where the contract owner will be a BondManager contract. Users will use the BondManager
+/// contract to mint and claim, which will call the functions in this contract.
+
 contract fNFTBond is ERC721, Ownable {
 
     using SafeMath for uint256;
