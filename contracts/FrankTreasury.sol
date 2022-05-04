@@ -110,22 +110,22 @@ contract FrankTreasury is Ownable {
         require(currentRevenue >= DISTRIBUTE_THRESHOLD);
 
         uint256 _currentRevenue = currentRevenue;
-        uint256 _feeAmount = _currentRevenue * internalFee / FEE_PRECISION;
+        uint256 _feeAmount = SafeMath.div(SafeMath.mul(_currentRevenue, internalFee), FEE_PRECISION);
 
         JOE.safeTransferFrom(address(this), teamAddress, _feeAmount);
         JOE.safeTransferFrom(address(this), investorAddress, _feeAmount);
 
         _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.mul(_feeAmount, 2));
 
-        uint256 _reinvestedAmount = _currentRevenue * strategy.PROPORTION_REINVESTMENTS / 100_000;
-        uint256 _rewardedAmount = _currentRevenue - _reinvestedAmount;
+        uint256 _reinvestedAmount = SafeMath.div(SafeMath.mul(_currentRevenue, strategy.PROPORTION_REINVESTMENTS), 100_000);
+        uint256 _rewardedAmount = SafeMath.sub(_currentRevenue, _reinvestedAmount);
 
         _reinvest(_reinvestedAmount);
 
         JOE.approve(address(BondManager), _rewardedAmount);
         BondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
 
-        totalRevenue += currentRevenue;
+        totalRevenue = SafeMath.add(totalRevenue, currentRevenue);
         currentRevenue = 0;
     }
 
@@ -296,6 +296,7 @@ contract FrankTreasury is Ownable {
     function harvestJoe() private {
         uint256 balanceBefore = JOE.balanceOf(address(this));
         IStableJoeStaking(SJoeStaking).withdraw(0);
+        // Convert to JOE
         uint256 _revenue = JOE.balanceOf(address(this)) - balanceBefore;
         currentRevenue += _revenue; 
 

@@ -21,6 +21,7 @@ interface IFNFTBond {
         bool active;
         uint16 basePrice;
         uint16 weight;
+        uint64 sellableAmount;
         string name;
     }
 
@@ -28,11 +29,11 @@ interface IFNFTBond {
 
     function totalActiveBondLevels() external view returns (uint8);
 
-    function linkBondManager(address _bondManager) external;
+    function _linkBondManager(address _bondManager) external;
 
-    function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint16 _index) external returns (bytes4);
+    function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) external returns (bytes4);
 
-    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight) external;
+    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external;
 
     function _deactivateBondLevel(bytes4 levelID) external;
 

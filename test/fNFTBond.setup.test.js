@@ -1,3 +1,4 @@
+const truffleAssertions = require('truffle-assertions')
 const Web3 = require('web3')
 const web3 = new Web3()
 
@@ -31,6 +32,7 @@ contract("fNFTBond", async (accounts) => {
         }
     ]
 
+    
     beforeEach(async () => {
         this.instance = await fNFTBond.new(name, symbol);
     })
@@ -60,5 +62,4 @@ contract("fNFTBond", async (accounts) => {
             assert.equal(level.name, initialLevels[i].name)
         }
     })
-    
 })

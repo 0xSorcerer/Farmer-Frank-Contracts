@@ -40,7 +40,6 @@ module.exports = {
   networks: {
 
     rinkeby: {
-      
       provider: () => new HDWalletProvider(env.PRIVATE_KEY, env.RINKEBY_API),
       network_id: 4, // Ropsten's id
       gas: 8000000, // Ropsten has a lower block limit than mainnet
@@ -59,10 +58,28 @@ module.exports = {
     },
 
     congruity: {
-      provider: () => new HDWalletProvider(process.env.PRIVATE_KEY, `http://127.0.0.1:8545`),
+      provider: () => new HDWalletProvider(env.AVAX_PRIVATE_KEY, `http://127.0.0.1:8545`),
       network_id: 21298, // Ropsten's id
       gas: 8000000, // Ropsten has a lower block limit than mainnet,
       confirmations: 0, // # of confs to wait between deployments. (default: 0)
+      timeoutBlocks: 200, // # of blocks before a deployment times out  (minimum/default: 50)
+      skipDryRun: false // Skip dry run before migrations? (default: false for public nets )
+    },
+
+    ropsten: {
+      provider: () => new HDWalletProvider(env.PRIVATE_KEY, `https://eth-ropsten.alchemyapi.io/v2/h6CwiwIM2Ji0TGjTZLkEiZDvfj8PMZ3v`),
+      network_id: 3, // Ropsten's id
+      gas: 8000000, // Ropsten has a lower block limit than mainnet,
+      confirmations: 1, // # of confs to wait between deployments. (default: 0)
+      timeoutBlocks: 200, // # of blocks before a deployment times out  (minimum/default: 50)
+      skipDryRun: false // Skip dry run before migrations? (default: false for public nets )
+    },
+
+    kovan: {
+      provider: () => new HDWalletProvider(env.KOVAN_KEY, `https://kovan.infura.io/v3/c63564d5fad8416ba9fddb16007a737c`),
+      network_id: 42, // Ropsten's id
+      gas: 8000000, // Ropsten has a lower block limit than mainnet,
+      confirmations: 1, // # of confs to wait between deployments. (default: 0)
       timeoutBlocks: 200, // # of blocks before a deployment times out  (minimum/default: 50)
       skipDryRun: false // Skip dry run before migrations? (default: false for public nets )
     }

@@ -13,10 +13,10 @@ import "./libraries/SafeMath.sol";
 
 contract BondDiscountable {
 
-    ///@notice Discount index. Used to map the bonds sold.
+    ///@dev Discount index. Used to map the bonds sold.
     uint16 internal discountIndex = 0;
     
-    /// @notice Keep track of how many bonds have been sold during a discount
+    /// @dev Keep track of how many bonds have been sold during a discount
     /// @dev discountedBondsSold[discountIndex][updateFactor][levelID]
     mapping(uint16 => mapping(uint16 => mapping(bytes4 => uint16))) internal discountedBondsSold;
 
@@ -34,8 +34,8 @@ contract BondDiscountable {
         mapping(bytes4 => uint8) purchaseLimit;
     }
 
-    /// @notice  discount
-    mapping(uint16 => Discount) discount;
+    /// @notice discount
+    mapping(uint16 => Discount) public discount;
 
     /// @notice Create a discount
     /// @param _startTime Timestamp at which discount will start 
@@ -123,11 +123,11 @@ contract BondManager is Ownable, BondDiscountable {
     uint256 public totalWeightedShares;
 
     /// @notice Accumulated rewards per weigted shares. Used to calculate rewardDebt.
-    uint256 public accRewardPerWS = 0;
+    uint256 public accRewardsPerWS = 0;
     /// @notice Accumulated shares per unweighted shares. Used to calculate shareDebt.
     uint256 public accSharesPerUS = 0;
 
-    /// @notice Precision constants.
+    /// @dev Precision constants.
     uint256 private GLOBAL_PRECISION = 10**18;
     uint256 private WEIGHT_PRECISION = 100;
 
@@ -196,8 +196,8 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _basePrice Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @dev Doesn't take _index as a parameter and appends the Bond level at the end of the active levels array.
-    function addBondLevel(string memory _name, uint16 _basePrice, uint16 _weight) external onlyOwner returns (bytes4) {
-        return bond._addBondLevelAtIndex(_name, _basePrice, _weight, bond.totalActiveBondLevels());
+    function addBondLevel(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external onlyOwner returns (bytes4) {
+        return bond._addBondLevelAtIndex(_name, _basePrice, _weight,  _sellableAmount, bond.totalActiveBondLevels());
     }
 
     /// @notice external onlyOwner implementation of _addBondLevelAtIndex (fNFT Bond) function.
@@ -205,8 +205,8 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _basePrice Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @param _index Index of activeBondLevels array where the Bond level will be inserted.
-    function addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint16 _index) external onlyOwner returns (bytes4) {
-        return bond._addBondLevelAtIndex(_name, _basePrice, _weight, _index);
+    function addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) external onlyOwner returns (bytes4) {
+        return bond._addBondLevelAtIndex(_name, _basePrice, _weight, _sellableAmount, _index);
     }
 
     /// @notice external onlyOwner implementation of _changeBondLevel (fNFT Bond) function.
@@ -214,8 +214,8 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _name New Bond level name.
     /// @param _basePrice New Bond base price.
     /// @param _weight New Weight percentage of Bond level (>= 100).
-    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight) external onlyOwner {
-        bond._changeBondLevel(levelID, _name, _basePrice, _weight);
+    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
+        bond._changeBondLevel(levelID, _name, _basePrice, _weight, _sellableAmount);
     }
 
     /// @notice external onlyOwner implementation of _deactivateBondLevel (fNFT Bond) function.
@@ -257,6 +257,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _amount Amount of fNFT Bonds being minted. Remember there is a limit of 20 Bonds per transaction.
     function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount) public {
         require(isSaleActive);
+        require(_amount > 0);
 
         address sender = _msgSender();
         require(sender != address(0), "fNFT Bond Manager: Creation from the zero address is prohibited.");
@@ -267,17 +268,18 @@ contract BondManager is Ownable, BondDiscountable {
         // If there is a discount, contract must check that there are enough Bonds left for that discount updateFactor period.
         if(discountActive) {
             uint8 updateFactor = getDiscountUpdateFactor();
-            require(discountedBondsSold[discountIndex][updateFactor][levelID] + _amount <= discount[discountIndex].purchaseLimit[levelID], "C01");
+            uint16 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], _amount));
+            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "C01");
 
             // If there are, it increments the mapping by the amount being minted.
-            discountedBondsSold[discountIndex][updateFactor][levelID] += _amount;
+            discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
         }
 
         // Checks that buyer has enough funds to mint the bond.
         require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
         // Transfers funds to trasury contract.
-        baseToken.safeTransferFrom(_msgSender(), address(this), bondPrice * _amount);
+        baseToken.safeTransferFrom(_msgSender(), address(this), SafeMath.mul(bondPrice, _amount));
 
         // Increments shares metrics.
         totalUnweightedShares += bondPrice * _amount;
@@ -285,20 +287,23 @@ contract BondManager is Ownable, BondDiscountable {
 
         // Call fNFT mintBond function.
         bond.mintBonds(sender, levelID, uint8(_amount), bondPrice);
+        
     }
 
     /// @notice Deposit rewards and shares for users to be claimed to this contract.
     /// @param _issuedRewards Amount of rewards to be deposited to the contract claimable by users.
     /// @param _issuedShares Amount of new shares claimable by users.
     function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external onlyOwner {
-        require(_msgSender() == treasury);
+        //require(_msgSender() == treasury);
 
         // Transfer funds from treasury to contract.
-        baseToken.transferFrom(treasury, address(this), _issuedRewards);
+        //baseToken.transferFrom(treasury, address(this), _issuedRewards);
+
+        baseToken.transferFrom(_msgSender(), address(this), _issuedRewards);
 
         // Increase accumulated shares and rewards.
         accSharesPerUS += _issuedShares * GLOBAL_PRECISION / totalUnweightedShares;
-        accRewardPerWS += _issuedRewards * GLOBAL_PRECISION / totalWeightedShares;
+        accRewardsPerWS += _issuedRewards * GLOBAL_PRECISION / totalWeightedShares;
 
         emit Update(_issuedRewards, _issuedShares);
     }
@@ -318,7 +323,7 @@ contract BondManager is Ownable, BondDiscountable {
         bond.claim(sender, _bondID, claimableRewards, claimableShares);
 
         // Send rewards to user.
-        baseToken.transferFrom(address(this), sender, claimableRewards);
+        baseToken.transfer(sender, claimableRewards);
     }
 
     /// @notice Public implementation of _claim function.
@@ -357,8 +362,8 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param levelID Bond level hex ID
     function getPrice(bytes4 levelID) public view returns (uint256, bool) {
         // Multiplies base price by GLOBAL_PRECISION (token decimals)
-        uint256 basePrice = SafeMath.mul(bond.getBondLevel(levelID).basePrice, GLOBAL_PRECISION);
-
+        
+        uint256 basePrice = (bond.getBondLevel(levelID).basePrice * GLOBAL_PRECISION);
         if(isDiscountActive()) {
             // Calculates total number of price updates during the discount time frame.
             uint256 totalUpdates = (discount[discountIndex].endTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency;
@@ -371,6 +376,7 @@ contract BondManager is Ownable, BondDiscountable {
         } else {
             return (basePrice, false);
         }
+        
     }
 
     /// @notice Get claimable amount of shares and rewards for a particular Bond.
@@ -379,6 +385,10 @@ contract BondManager is Ownable, BondDiscountable {
         IFNFTBond.Bond memory _bond = bond.getBond(_bondID);
 
         claimableShares = (_bond.unweightedShares * accSharesPerUS / GLOBAL_PRECISION) - _bond.shareDebt;
-        claimableRewards = (_bond.weightedShares * accRewardPerWS / GLOBAL_PRECISION) - _bond.rewardDebt;
+        claimableRewards = (_bond.weightedShares * accRewardsPerWS / GLOBAL_PRECISION) - _bond.rewardDebt;
+    }
+
+    function linkBondManager() external onlyOwner {
+        bond._linkBondManager(address(this));
     }
 }

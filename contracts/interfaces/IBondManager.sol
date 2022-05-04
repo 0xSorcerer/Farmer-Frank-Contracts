@@ -36,11 +36,11 @@ interface IBondManager {
 
     function deactivateDiscount() external;
 
-    function addBondLevel (string memory _name, uint16 _basePrice, uint16 _weight) external returns (bytes4);
+    function addBondLevel (string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external returns (bytes4);
 
-    function addBondLevelAtIndex (string memory _name, uint16 _basePrice, uint16 _weight, uint16 _index) external returns (bytes4);
+    function addBondLevelAtIndex (string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) external returns (bytes4);
 
-    function changeBondLevel (bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight) external;
+    function changeBondLevel (bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external;
 
     function deactivateBondLevel (bytes4 levelID) external;
 
@@ -65,5 +65,7 @@ interface IBondManager {
     function getPrice (bytes4 levelID) external view returns (uint256, bool);
 
     function getClaimableAmounts (uint256 _bondID) external view returns (uint256 claimableShares, uint256 claimableRewards);
+
+    function linkBondManager() external;
 
 }

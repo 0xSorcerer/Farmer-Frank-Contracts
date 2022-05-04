@@ -68,20 +68,20 @@ contract fNFTBond is ERC721, Ownable {
     /// @notice Bond manager interface used to get accSharesPerUS() and accRewardsPerWS().
     IBondManager public bondManager;
 
-    /// @notice Precision constants
+    /// @dev Precision constants
     uint256 internal constant GLOBAL_PRECISION = 10**18;
     uint256 internal constant WEIGHT_PRECISION = 100;
 
-    /// @notice Maximum amount of Bond levels the bond can support.
+    /// @dev Maximum amount of Bond levels the bond can support.
     uint16 internal constant MAX_BOND_LEVELS = 10;
 
-    /// @notice Mapping storing all bonds data.
+    /// @dev Mapping storing all bonds data.
     mapping(uint256 => Bond) private bonds; 
-    /// @notice Mapping storing all existing Bond levels.
+    /// @dev Mapping storing all existing Bond levels.
     mapping(bytes4 => BondLevel) private bondLevels;
-    /// @notice Array storing all active bonds level: bonds that can be minted. 
+    /// @dev Array storing all active bonds level: bonds that can be minted. 
     bytes4[] private activeBondLevels;
-    /// @notice Mapping to store how many bonds were minted per level. Used only for bonds with maximum supply.
+    /// @dev Mapping to store how many bonds were minted per level. Used only for bonds with maximum supply.
     mapping(bytes4 => uint256) private bondsSold;
     /// @notice Amount of currently active Bond levels
     /// @dev Must be <= MAX_BOND_LEVELS
@@ -148,7 +148,7 @@ contract fNFTBond is ERC721, Ownable {
     /// is designed to store a "concise" amount of Bond levels: 10. Hence Avalanche would be totally able
     /// to run the transaction.
     function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) public onlyOwner returns (bytes4) {
-        require(!(totalActiveBondLevels >= MAX_BOND_LEVELS), "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
+        require(MAX_BOND_LEVELS > totalActiveBondLevels, "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(_index <= totalActiveBondLevels, "fNFT Bond: Index out of bounds.");
 
         // Calculate unique Bond level hex ID.
@@ -189,7 +189,7 @@ contract fNFTBond is ERC721, Ownable {
     /// @param _name New Bond level name.
     /// @param _basePrice New Bond base price.
     /// @param _weight New Weight percentage of Bond level (>= 100).
-    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint32 _sellableAmount, uint16 _weight) external onlyOwner {
+    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
         bondLevels[levelID] = BondLevel({
             levelID: levelID,
             active: true,
@@ -271,7 +271,7 @@ contract fNFTBond is ERC721, Ownable {
     }
 
     /// @notice Connect fNFT Bond contract (this) to its manager. Manager is needed to get accSharesPerUS() and accRewardsPerWS().
-    function linkBondManager(address _bondManager) external onlyOwner {
+    function _linkBondManager(address _bondManager) external onlyOwner {
         require(_bondManager != address(0), "fNFT Bond: Bond manager can't be set to the 0 address.");
         bondManager = IBondManager(_bondManager);
     }
@@ -287,18 +287,19 @@ contract fNFTBond is ERC721, Ownable {
         require(bondLevels[levelID].active, "A08");
         require(_amount <= 20, "A09");
 
+
         //If sellableAmount is 0, the bonds level does not have a capped supply.
         if(bondLevels[levelID].sellableAmount != 0) {
             require(bondLevels[levelID].sellableAmount >= bondsSold[levelID] + _amount);
             bondsSold[levelID] += _amount;
         }
-        
+       
         uint16 _weight = bondLevels[levelID].weight;
         uint256 _unweightedShares = _price;
-        uint256 _weightedShares = (_price * _weight) / WEIGHT_PRECISION;
+        uint256 _weightedShares = SafeMath.div(SafeMath.mul(_price, _weight), WEIGHT_PRECISION); 
+        
         uint256 _shareDebt = SafeMath.div(SafeMath.mul(_unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
         uint256 _rewardDebt = SafeMath.div(SafeMath.mul(_weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
-
         uint48 timestamp = uint48(block.timestamp);
 
         for (uint8 i = 0; i < _amount; i++) {
@@ -319,6 +320,7 @@ contract fNFTBond is ERC721, Ownable {
             _safeMint(_account, _bondID);
             emit BondCreated(_bondID, levelID, _account, timestamp, _price);
         }
+        
     }
 
     /// @notice Claim rewards & shares. Used to update bond's data: shares and debt
@@ -340,7 +342,7 @@ contract fNFTBond is ERC721, Ownable {
             SafeMath.div(
                 SafeMath.mul(
                     issuedShares,
-                    bondLevels[bonds[_bondID].levelID].weight
+                    bonds[_bondID].weight
                 ),
                 WEIGHT_PRECISION
             )
