@@ -9,6 +9,7 @@ import "./other/Ownable.sol";
 import "./interfaces/IERC20.sol";
 import "./libraries/SafeERC20.sol";
 import "./libraries/SafeMath.sol";
+import "./interfaces/IFrankTreasury.sol";
 
 
 contract BondDiscountable {
@@ -114,8 +115,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Token used to mint Bonds and issue rewards.
     IERC20 public baseToken;
 
-    /// @notice Treasury address to send bonded assets.
-    address public treasury;
+    IFrankTreasury public treasury;
 
     /// @notice Total number of unweighted shares.
     uint256 public totalUnweightedShares;
@@ -154,12 +154,19 @@ contract BondManager is Ownable, BondDiscountable {
 
     /// @param _bond fNFT Bond contract address.
     /// @param _baseToken Base Token contract address.
-    constructor(address _bond, address _baseToken) {
+    constructor(address _bond, address _baseToken, address _treasury) {
         require(_bond != address(0));
         require(_baseToken != address(0));
 
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
+
+        setTreasury(_treasury);
+    }
+
+    function setTreasury(address _treasury) public onlyOwner {
+        require(_treasury != address(0));
+        treasury = IFrankTreasury(_treasury);
     }
 
     /// @notice external onlyOwner implementation of _startDiscount (BondDiscountable) function.
@@ -279,7 +286,8 @@ contract BondManager is Ownable, BondDiscountable {
         require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
         // Transfers funds to trasury contract.
-        baseToken.safeTransferFrom(_msgSender(), address(this), SafeMath.mul(bondPrice, _amount));
+        //baseToken.safeTransferFrom(_msgSender(), address(this), SafeMath.mul(bondPrice, _amount));
+        treasury.bondDeposit(bondPrice * _amount, sender);
 
         // Increments shares metrics.
         totalUnweightedShares += bondPrice * _amount;

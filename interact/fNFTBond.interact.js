@@ -9,8 +9,11 @@ const web3 = new Web3(new HDWalletProvider(env.KOVAN_KEY, "https://kovan.infura.
 const fNFTBondABI = require('../build/contracts/fNFTBond.json').abi;
 const ERC20ABI = require('../build/contracts/ERC20.json').abi;
 const BondManagerABI = require('../build/contracts/BondManager.json').abi;
+const TreasuryABI = require('../build/contracts/FrankTreasury.json').abi;
 
 const init = async () => {
+
+    const address = "0xb3304A14F01Cb5C22E6f5E9fd55b6b6c826e8cc7"
 /*
     const address = "0xb690Bb5A5008fdC7E78724475F0855F681920f4d"
 
@@ -27,9 +30,9 @@ const init = async () => {
     console.log(await bond.methods.getActiveBondLevels().call())
     */
 
-    const c = new web3.eth.Contract(ERC20ABI, "0xe22da380ee6B445bb8273C81944ADEB6E8450422")
+    const c = new web3.eth.Contract(TreasuryABI, "0xa2EE02a3A7cD4592e33174b8C159c593E877F977")
     //console.log(await c.methods.approve("0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0", "999999999999999999999999999999999999").send({from: "0xb3304A14F01Cb5C22E6f5E9fd55b6b6c826e8cc7"}))
-    console.log(await c.methods.allowance("0xb3304A14F01Cb5C22E6f5E9fd55b6b6c826e8cc7", "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D").call())
+    console.log(await c.methods._addAndFarmLiquidity("100000000000000000000", "0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0").send({from: address}))
 }
 
 init()
