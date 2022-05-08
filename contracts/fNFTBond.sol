@@ -431,6 +431,15 @@ contract fNFTBond is ERC721, Ownable {
         _safeTransfer(from, to, tokenId, _data);
     }
 
+    function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
+        require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
+
+        Bond storage _bond = bonds[tokenId];
+        _bond.earned = 0;
+
+        _safeTransfer(from, to, tokenId, "");
+    }
+
     /// @notice See {IERC721-transferFrom}.
     /// @dev Overridden to reset Bond earned value.
     function transferFrom(address from, address to, uint256 tokenId) public virtual override {

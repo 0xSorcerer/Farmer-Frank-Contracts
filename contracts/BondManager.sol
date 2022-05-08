@@ -301,7 +301,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Deposit rewards and shares for users to be claimed to this contract.
     /// @param _issuedRewards Amount of rewards to be deposited to the contract claimable by users.
     /// @param _issuedShares Amount of new shares claimable by users.
-    function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external onlyOwner {
+    function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external {
         //require(_msgSender() == treasury);
 
         // Transfer funds from treasury to contract.
