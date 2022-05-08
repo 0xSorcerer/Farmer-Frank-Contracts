@@ -27,6 +27,10 @@ interface IVeJoeStaking {
 
 //Add withdraws
 
+/// @notice Farmer Frank Treasury.
+/// Manages staking / unstaking of sJOE and veJOE + adding liquidity to BMCJ.
+/// 
+
 contract FrankTreasury is Ownable {
 
     using SafeMath for uint256;
@@ -364,5 +368,9 @@ contract FrankTreasury is Ownable {
         revert();
     }
     */
+
+    function withdraw(address _token, uint256 _amount, address _receiver) external onlyOwner {
+        IERC20(_token).transfer(_receiver, _amount);
+    }
 
 }

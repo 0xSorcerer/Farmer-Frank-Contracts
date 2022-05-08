@@ -35,8 +35,7 @@ contract BondDiscountable {
         mapping(bytes4 => uint8) purchaseLimit;
     }
 
-    /// @notice Discounts mapping.
-    /// @dev discount[discountIndex]
+    /// @notice discount
     mapping(uint16 => Discount) public discount;
 
     /// @notice Create a discount
@@ -54,7 +53,7 @@ contract BondDiscountable {
         bytes4[] memory _levelIDs
     ) internal {
         uint256 cTime = block.timestamp;
-        require(_startTime >= cTime, "Bond Discountable: Start timestamp must be > than current timestamp.");
+        require(_startTime > cTime, "Bond Discountable: Start timestamp must be > than current timestamp.");
         require(_endTime > _startTime, "Bond Discountable: End timestamp must be > than current timestamp."); 
         require(_updateFrequency < (_endTime - _startTime), "Bond Discountable: Update frequency must be < than discount duration."); 
         require((_endTime - _startTime) % _updateFrequency == 0, "Bond Discountable: Discount duration must be divisible by the update frequency.");
@@ -93,26 +92,16 @@ contract BondDiscountable {
     function isDiscountActive() public view returns (bool) {
         if (isDiscountPlanned()) {
             uint256 cTime = block.timestamp;
-            if (discount[discountIndex].startTime < cTime && discount[discountIndex].endTime > cTime) {
+            if (
+                discount[discountIndex].startTime < cTime &&
+                discount[discountIndex].endTime > cTime
+            ) {
                 return true;
             }
         }
 
         return false;
     }
-
-    /*
-    function isDiscountActive() public view returns (bool) {
-        if (isDiscountPlanned()) {
-            uint256 cTime = block.timestamp;
-            if (discount[discountIndex].startTime < cTime && discount[discountIndex].endTime > cTime) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-    */
 }
 
 contract BondManager is Ownable, BondDiscountable {
@@ -165,7 +154,6 @@ contract BondManager is Ownable, BondDiscountable {
 
     /// @param _bond fNFT Bond contract address.
     /// @param _baseToken Base Token contract address.
-    /// @param _treasury Treasury address.
     constructor(address _bond, address _baseToken, address _treasury) {
         require(_bond != address(0));
         require(_baseToken != address(0));
@@ -178,7 +166,6 @@ contract BondManager is Ownable, BondDiscountable {
 
     function setTreasury(address _treasury) public onlyOwner {
         require(_treasury != address(0));
-
         treasury = IFrankTreasury(_treasury);
     }
 
@@ -308,13 +295,17 @@ contract BondManager is Ownable, BondDiscountable {
 
         // Call fNFT mintBond function.
         bond.mintBonds(sender, levelID, uint8(_amount), bondPrice);
+        
     }
 
     /// @notice Deposit rewards and shares for users to be claimed to this contract.
     /// @param _issuedRewards Amount of rewards to be deposited to the contract claimable by users.
     /// @param _issuedShares Amount of new shares claimable by users.
     function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external {
-        require(_msgSender() == address(treasury));
+        //require(_msgSender() == treasury);
+
+        // Transfer funds from treasury to contract.
+        //baseToken.transferFrom(treasury, address(this), _issuedRewards);
 
         baseToken.transferFrom(_msgSender(), address(this), _issuedRewards);
 

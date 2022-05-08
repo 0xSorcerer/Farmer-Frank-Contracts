@@ -24,12 +24,9 @@ module.exports = async (deployer) => {
 
     await bond.transferOwnership(BondManager.address)
     await manager.linkBondManager()
-    
 
-    //
+    const treasury = await FrankTreasury.deployed()
 
-    //const treasury = await FrankTreasury.deployed()
-
-    //await treasury.setBondManager("0xb561A37c55B98e77f48ae639C88D729337558c0D")
+    await treasury.setBondManager(BondManager.address)
 
 }

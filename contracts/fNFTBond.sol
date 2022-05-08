@@ -11,14 +11,17 @@ import "./interfaces/IBondManager.sol";
 /*
     TODO: 
         TRANSFER RESET EARNED
+        Remove totalBondLevels and instead use .length
+        Change base price to price
 */
 
-// ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
-// Author: @0xSorcerer
+/// @title ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
+/// @author @0xSorcerer
 
 /// @notice Users are not supposed to interract with this contract. Most functions are marked
 /// as onlyOwner, where the contract owner will be a BondManager contract. Users will use the BondManager
 /// contract to mint and claim, which will call the functions in this contract.
+/// This contract holds Bond Data and Bond Level data. 
 
 contract fNFTBond is ERC721, Ownable {
 
@@ -27,7 +30,7 @@ contract fNFTBond is ERC721, Ownable {
 
     /// @notice Info of each fNFT Bond.
     struct Bond {
-        // Unique fNFT Bond uint ID.
+        // Unique fNFT Bond ID.
         uint256 bondID;
         // Mint timestamp.
         uint48 mint;
@@ -36,7 +39,7 @@ contract fNFTBond is ERC721, Ownable {
         // fNFT Bond level weight.
         // Storing weight in bond object to save gas. Allows to avoid getBondLevel() call in BondManager contract.
         uint16 weight;
-        // Amount of REWARDS (not shares) earned historically when holding contract. Resets on _transfer().
+        // Amount of REWARDS (not shares) earned historically when holding bond. Resets on transfer.
         uint256 earned;
         // Amount of unweighted shares.
         uint256 unweightedShares;
@@ -57,9 +60,9 @@ contract fNFTBond is ERC721, Ownable {
         uint16 basePrice;
         // Bond weight multipliers. Used to calculate weighted shares.
         // Weight is percentage (out of 100), hence weight = 100 would mean 1x (base multiplier).
-        // This is why WEIGHT_PRECISION = 100. 
+        // Hence, WEIGHT_PRECISION = 100. 
         uint16 weight;
-        // Maximum supply of bonds of that level. If set to 0, the maximum supply is unlimited.
+        // Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
         uint64 sellableAmount;
         // Bond level name used on Farmer Frank's UI.
         string name;
@@ -69,11 +72,11 @@ contract fNFTBond is ERC721, Ownable {
     IBondManager public bondManager;
 
     /// @dev Precision constants
-    uint256 internal constant GLOBAL_PRECISION = 10**18;
-    uint256 internal constant WEIGHT_PRECISION = 100;
+    uint256 private constant GLOBAL_PRECISION = 10**18;
+    uint256 private constant WEIGHT_PRECISION = 100;
 
     /// @dev Maximum amount of Bond levels the bond can support.
-    uint16 internal constant MAX_BOND_LEVELS = 10;
+    uint16 private constant MAX_BOND_LEVELS = 10;
 
     /// @dev Mapping storing all bonds data.
     mapping(uint256 => Bond) private bonds; 
@@ -136,17 +139,15 @@ contract fNFTBond is ERC721, Ownable {
         _addBondLevelAtIndex("Level IV", 5000, 115, 0, totalActiveBondLevels);
     }
 
-    /// @notice Create a Bond level and add it at a particular index of activeBondLevels array.
+    /// @notice Create a Bond level and adds it at a particular index of activeBondLevels array.
     /// @param _name Bond level name. Showed on Farmer Frank's UI.
     /// @param _basePrice Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @param _index Index of activeBondLevels array where the Bond level will be inserted.
-    /// @dev onlyOwner: Function can be called only by BondManager contract.
     /// @dev If the Bond level must be added at the end of the array --> _index = totalActiveBondLevels.
     /// @dev When adding a bond level whose index isn't totalActiveBondLevels, the contract loops through
     /// the array shifting its elements. We disregard unbounded gas cost possible error as the contract
-    /// is designed to store a "concise" amount of Bond levels: 10. Hence Avalanche would be totally able
-    /// to run the transaction.
+    /// is designed to store a "concise" amount of Bond levels: 10.
     function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) public onlyOwner returns (bytes4) {
         require(MAX_BOND_LEVELS > totalActiveBondLevels, "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(_index <= totalActiveBondLevels, "fNFT Bond: Index out of bounds.");
@@ -204,12 +205,11 @@ contract fNFTBond is ERC721, Ownable {
 
     /// @notice Deactivate a Bond level.
     /// @param levelID Bond level hex ID.
-    /// @dev onlyOwner: Function can be called only by BondManager contract.
     /// @dev Bond being deactivated is removed from activeBondLevels array and its active parameter
     /// is set to false.
     /// @dev When removing a bond level, the contract loops through the activeBondLevels array shifting its elements.
     /// We disregard unbounded gas cost possible error as the contract is designed to store a "concise"
-    /// amount of Bond levels: 10. Hence Avalanche would be totally able to run the transaction.
+    /// amount of Bond levels: 10. 
     function _deactivateBondLevel(bytes4 levelID) external onlyOwner {
         require(bondLevels[levelID].active == true, "A04");
 
@@ -245,10 +245,9 @@ contract fNFTBond is ERC721, Ownable {
     /// Farmer Frank's Team to manage their availability at will. 
     /// @param levelID Bond level hex ID.
     /// @param _index Index of activeBondLevels array where the Bond level will be inserted.
-    /// @dev onlyOwner: Function can be called only by BondManager contract.
     /// @dev When activating a bond level, the contract loops through the activeBondLevels array shifting its elements.
     /// We disregard unbounded gas cost possible error as the contract is designed to store a "concise"
-    /// amount of Bond levels: 10. Hence Avalanche would be totally able to run the transaction.
+    /// amount of Bond levels: 10.
     function _activateBondLevel(bytes4 levelID, uint16 _index) external onlyOwner {
         require(!(totalActiveBondLevels >= MAX_BOND_LEVELS), "A05");
         require(_index <= totalActiveBondLevels, "A06");
@@ -270,7 +269,7 @@ contract fNFTBond is ERC721, Ownable {
         emit BondLevelActivated(levelID);
     }
 
-    /// @notice Connect fNFT Bond contract (this) to its manager. Manager is needed to get accSharesPerUS() and accRewardsPerWS().
+    /// @notice Connect fNFTBond contract (this) to its manager. Manager is needed to get accSharesPerUS() and accRewardsPerWS().
     function _linkBondManager(address _bondManager) external onlyOwner {
         require(_bondManager != address(0), "fNFT Bond: Bond manager can't be set to the 0 address.");
         bondManager = IBondManager(_bondManager);
@@ -282,7 +281,7 @@ contract fNFTBond is ERC721, Ownable {
     /// @param _amount Amount of fNFT bonds being minted.
     /// @param _price Price per fNFT bond. Used to calculate shares and debt.
     /// @dev onlyOwner: Function can be called only by BondManager contract.
-    function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _price /*onlyOwner*/) external {
+    function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _price) onlyOwner external {
         require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
         require(bondLevels[levelID].active, "A08");
         require(_amount <= 20, "A09");
@@ -323,22 +322,21 @@ contract fNFTBond is ERC721, Ownable {
         
     }
 
-    /// @notice Claim rewards & shares. Used to update bond's data: shares and debt
-    /// @param _account Account calling the claim function from bondManager
-    /// @param _bondID Unique fNFT Bond uint ID
-    /// @param issuedRewards Rewards issued to bond holder. Used to update earned parameter
-    /// @param issuedShares Shares issued to bond. Used to calculate new shares and debt amount
-    /// @dev onlyOwner: Function can be called only by BondManager contract
-    function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external onlyIfExists(_bondID) /*onlyOwner*/ {
+    /// @notice Claim rewards & shares. Used to update bond's data.
+    /// @param _account Account calling the claim function from bondManager.
+    /// @param _bondID Unique fNFT Bond uint ID.
+    /// @param issuedRewards Rewards issued to bond holder. Used to update earned parameter.
+    /// @param issuedShares Shares issued to bond. Used to calculate new shares amount.
+    function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external onlyIfExists(_bondID) {
         require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
         require(ownerOf(_bondID) == _account);
 
-        Bond storage bond = bonds[_bondID];
+        Bond memory _bond = bonds[_bondID];
 
-        bond.earned = SafeMath.add(bond.earned, issuedRewards);
-        bond.unweightedShares = SafeMath.add(bond.unweightedShares, issuedShares);
-        bond.weightedShares = SafeMath.add(
-            bond.weightedShares,
+        _bond.earned = SafeMath.add(_bond.earned, issuedRewards);
+        _bond.unweightedShares = SafeMath.add(_bond.unweightedShares, issuedShares);
+        _bond.weightedShares = SafeMath.add(
+            _bond.weightedShares,
             SafeMath.div(
                 SafeMath.mul(
                     issuedShares,
@@ -347,40 +345,46 @@ contract fNFTBond is ERC721, Ownable {
                 WEIGHT_PRECISION
             )
         );
-        bond.shareDebt = SafeMath.div(SafeMath.mul(bond.unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
-        bond.rewardDebt = SafeMath.div(SafeMath.mul(bond.weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
+        _bond.shareDebt = SafeMath.div(SafeMath.mul(_bond.unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
+        _bond.rewardDebt = SafeMath.div(SafeMath.mul(_bond.weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
+
+        bonds[_bondID] = _bond;
 
         emit Claim(_bondID, _account, issuedShares, issuedRewards);
     }
 
     /// @notice Set base URI for fNFT Bond contract.
-    /// @dev onlyOwner: Function can be called only by BondManager contract.
+    /// @param baseURI_ New base URI.
     function setBaseURI(string memory baseURI_) external onlyOwner {
         _setBaseURI(baseURI_);
     }
 
     /// @notice Modifier ensuring that a bond with ID: _bondID exists.
+    /// @notice Unique fNFT Bond ID. 
     modifier onlyIfExists(uint256 _bondID) {
         require(_exists(_bondID), "A10");
         _;
     }
     
-    /// @notice Returns an array of all hex IDs of active Bond levels
+    /// @notice Returns an array of all hex IDs of active Bond levels.
     function getActiveBondLevels() external view returns (bytes4[] memory) {
         return activeBondLevels;
     }
 
-    /// @notice Returns Bond level
+    /// @notice Returns Bond level.
+    /// @param _levelID Unique fNFT Bond level hex ID.
     function getBondLevel(bytes4 _levelID) external view returns (BondLevel memory) {
        return bondLevels[_levelID];
     }
 
-    /// @notice Returns bond at _bondID
+    /// @notice Returns bond at _bondID.
+    /// @notice Unique fNFT Bond ID. 
     function getBond(uint256 _bondID) external view onlyIfExists(_bondID) returns (Bond memory bond) {
         bond = bonds[_bondID];
     }  
 
     /// @notice Get array of all bonds owned by user. 
+    /// @param _account Account whose Bonds' IDs will be returned.
     function getBondsIDsOf(address _account) external view returns (uint256[] memory) {
         uint256 _balance = balanceOf(_account);
         uint256[] memory IDs = new uint256[](_balance);
@@ -420,7 +424,7 @@ contract fNFTBond is ERC721, Ownable {
         return string(abi.encodePacked("0x", converted));
     }
 
-    /// @notice See {IERC721-safeTransferFrom}.
+    /// @dev See {IERC721-safeTransferFrom}.
     /// @dev Overridden to reset Bond earned value.
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory _data) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
@@ -431,6 +435,8 @@ contract fNFTBond is ERC721, Ownable {
         _safeTransfer(from, to, tokenId, _data);
     }
 
+    /// @dev See {IERC721-safeTransferFrom}.
+    /// @dev Overridden to reset Bond earned value.
     function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
