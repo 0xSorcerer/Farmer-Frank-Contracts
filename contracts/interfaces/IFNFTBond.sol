@@ -19,7 +19,7 @@ interface IFNFTBond {
     struct BondLevel {
         bytes4 levelID;
         bool active;
-        uint16 basePrice;
+        uint256 price;
         uint16 weight;
         uint64 sellableAmount;
         string name;
@@ -31,9 +31,9 @@ interface IFNFTBond {
 
     function _linkBondManager(address _bondManager) external;
 
-    function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) external returns (bytes4);
+    function _addBondLevelAtIndex(string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint16 _index) external returns (bytes4);
 
-    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external;
+    function _changeBondLevel(bytes4 levelID, string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external;
 
     function _deactivateBondLevel(bytes4 levelID) external;
 

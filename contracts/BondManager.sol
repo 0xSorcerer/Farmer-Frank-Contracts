@@ -213,29 +213,29 @@ contract BondManager is Ownable, BondDiscountable {
 
     /// @notice external onlyOwner implementation of _addBondLevelAtIndex (fNFT Bond) function.
     /// @param _name Bond level name. Showed on Farmer Frank's UI.
-    /// @param _basePrice Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
+    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @dev Doesn't take _index as a parameter and appends the Bond level at the end of the active levels array.
-    function addBondLevel(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external onlyOwner returns (bytes4) {
-        return bond._addBondLevelAtIndex(_name, _basePrice, _weight,  _sellableAmount, bond.totalActiveBondLevels());
+    function addBondLevel(string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external onlyOwner returns (bytes4) {
+        return bond._addBondLevelAtIndex(_name, _price, _weight,  _sellableAmount, bond.totalActiveBondLevels());
     }
 
     /// @notice external onlyOwner implementation of _addBondLevelAtIndex (fNFT Bond) function.
     /// @param _name Bond level name. Showed on Farmer Frank's UI.
-    /// @param _basePrice Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
+    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @param _index Index of activeBondLevels array where the Bond level will be inserted.
-    function addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) external onlyOwner returns (bytes4) {
-        return bond._addBondLevelAtIndex(_name, _basePrice, _weight, _sellableAmount, _index);
+    function addBondLevelAtIndex(string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint16 _index) external onlyOwner returns (bytes4) {
+        return bond._addBondLevelAtIndex(_name, _price, _weight, _sellableAmount, _index);
     }
 
     /// @notice external onlyOwner implementation of _changeBondLevel (fNFT Bond) function.
     /// @param levelID Bond level hex ID being changed.
     /// @param _name New Bond level name.
-    /// @param _basePrice New Bond base price.
+    /// @param _price New Bond base price.
     /// @param _weight New Weight percentage of Bond level (>= 100).
-    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
-        bond._changeBondLevel(levelID, _name, _basePrice, _weight, _sellableAmount);
+    function changeBondLevel(bytes4 levelID, string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
+        bond._changeBondLevel(levelID, _name, _price, _weight, _sellableAmount);
     }
 
     /// @notice external onlyOwner implementation of _deactivateBondLevel (fNFT Bond) function.
@@ -299,7 +299,6 @@ contract BondManager is Ownable, BondDiscountable {
         require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
         // Transfers funds to trasury contract.
-        //baseToken.safeTransferFrom(_msgSender(), address(this), SafeMath.mul(bondPrice, _amount));
         treasury.bondDeposit(bondPrice * _amount, sender);
 
         // Increments shares metrics.
@@ -380,18 +379,18 @@ contract BondManager is Ownable, BondDiscountable {
     function getPrice(bytes4 levelID) public view returns (uint256, bool) {
         // Multiplies base price by GLOBAL_PRECISION (token decimals)
         
-        uint256 basePrice = (bond.getBondLevel(levelID).basePrice * GLOBAL_PRECISION);
+        uint256 price = bond.getBondLevel(levelID).price;
         if(isDiscountActive()) {
             // Calculates total number of price updates during the discount time frame.
             uint256 totalUpdates = (discount[discountIndex].endTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency;
             // Calculates the price when discount starts: the lowest price. Simply, the base price discounted by the discount rate.
-            uint256 discountStartPrice = basePrice - ((basePrice * discount[discountIndex].discountRate) / 100);
+            uint256 discountStartPrice = price - ((price * discount[discountIndex].discountRate) / 100);
             // Calculates how much price will increase at every price update.
-            uint256 updateIncrement = (basePrice - discountStartPrice) / totalUpdates;
+            uint256 updateIncrement = (price - discountStartPrice) / totalUpdates;
             // Finally calcualtes the price using the above variables.
             return (discountStartPrice + (updateIncrement * getDiscountUpdateFactor()), true);
         } else {
-            return (basePrice, false);
+            return (price, false);
         }
         
     }

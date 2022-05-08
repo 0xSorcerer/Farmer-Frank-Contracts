@@ -56,8 +56,8 @@ contract fNFTBond is ERC721, Ownable {
         bytes4 levelID;
         // Whether bonds of this level can be currently minted.
         bool active;
-        // Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
-        uint16 basePrice;
+        // Bond price.
+        uint256 price;
         // Bond weight multipliers. Used to calculate weighted shares.
         // Weight is percentage (out of 100), hence weight = 100 would mean 1x (base multiplier).
         // Hence, WEIGHT_PRECISION = 100. 
@@ -92,14 +92,14 @@ contract fNFTBond is ERC721, Ownable {
 
     event NewBondLevel (
         bytes4 indexed levelID,
-        uint16 basePrice,
+        uint256 price,
         uint16 weight,
         string name
     );
 
     event BondLevelChanged (
         bytes4 indexed levelID,
-        uint16 basePrice,
+        uint256 price,
         uint16 weight,
         string name
     );
@@ -133,32 +133,32 @@ contract fNFTBond is ERC721, Ownable {
         _setBaseURI("https://gist.githubusercontent.com/0xSorcerer/3a9caa1af932f7b4ea57b7a7ef73494c/raw/dfdaa22b1f6c5847e4ad07b46fb57aecdb5d3d99/gistfile1.json");
 
         //Create initial Bond levels.
-        _addBondLevelAtIndex("Level I", 10, 100, 0, totalActiveBondLevels);
-        _addBondLevelAtIndex("Level II", 100, 105, 0, totalActiveBondLevels);
-        _addBondLevelAtIndex("Level III", 1000, 110, 0, totalActiveBondLevels);
-        _addBondLevelAtIndex("Level IV", 5000, 115, 0, totalActiveBondLevels);
+        _addBondLevelAtIndex("Level I", SafeMath.mul(10, GLOBAL_PRECISION), 100, 0, totalActiveBondLevels);
+        _addBondLevelAtIndex("Level II", SafeMath.mul(100, GLOBAL_PRECISION), 105, 0, totalActiveBondLevels);
+        _addBondLevelAtIndex("Level III", SafeMath.mul(1000, GLOBAL_PRECISION), 110, 0, totalActiveBondLevels);
+        _addBondLevelAtIndex("Level IV", SafeMath.mul(5000, GLOBAL_PRECISION), 115, 0, totalActiveBondLevels);
     }
 
     /// @notice Create a Bond level and adds it at a particular index of activeBondLevels array.
     /// @param _name Bond level name. Showed on Farmer Frank's UI.
-    /// @param _basePrice Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
+    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @param _index Index of activeBondLevels array where the Bond level will be inserted.
     /// @dev If the Bond level must be added at the end of the array --> _index = totalActiveBondLevels.
     /// @dev When adding a bond level whose index isn't totalActiveBondLevels, the contract loops through
     /// the array shifting its elements. We disregard unbounded gas cost possible error as the contract
     /// is designed to store a "concise" amount of Bond levels: 10.
-    function _addBondLevelAtIndex(string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount, uint16 _index) public onlyOwner returns (bytes4) {
+    function _addBondLevelAtIndex(string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint16 _index) public onlyOwner returns (bytes4) {
         require(MAX_BOND_LEVELS > totalActiveBondLevels, "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(_index <= totalActiveBondLevels, "fNFT Bond: Index out of bounds.");
 
         // Calculate unique Bond level hex ID.
-        bytes4 levelID = bytes4(keccak256(abi.encodePacked(_name, _basePrice, _weight, block.timestamp)));
+        bytes4 levelID = bytes4(keccak256(abi.encodePacked(_name, _price, _weight, block.timestamp)));
 
         BondLevel memory _level = BondLevel({
             levelID: levelID,
             active: true,
-            basePrice: _basePrice,
+            price: _price,
             weight: _weight,
             sellableAmount: _sellableAmount,
             name: _name
@@ -180,7 +180,7 @@ contract fNFTBond is ERC721, Ownable {
         bondLevels[levelID] = _level;
         totalActiveBondLevels++;
 
-        emit NewBondLevel(levelID, _basePrice, _weight, _name);
+        emit NewBondLevel(levelID, _price, _weight, _name);
         
         return(levelID);
     }
@@ -188,19 +188,19 @@ contract fNFTBond is ERC721, Ownable {
     /// @notice Change a Bond level.
     /// @param levelID Bond level hex ID being changed.
     /// @param _name New Bond level name.
-    /// @param _basePrice New Bond base price.
+    /// @param _price New Bond price.
     /// @param _weight New Weight percentage of Bond level (>= 100).
-    function _changeBondLevel(bytes4 levelID, string memory _name, uint16 _basePrice, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
+    function _changeBondLevel(bytes4 levelID, string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
         bondLevels[levelID] = BondLevel({
             levelID: levelID,
             active: true,
-            basePrice: _basePrice,
+            price: _price,
             weight: _weight,
             sellableAmount: _sellableAmount,
             name: _name
         });
 
-        emit BondLevelChanged(levelID, _basePrice, _weight, _name);
+        emit BondLevelChanged(levelID, _price, _weight, _name);
     }
 
     /// @notice Deactivate a Bond level.
@@ -294,8 +294,10 @@ contract fNFTBond is ERC721, Ownable {
         }
        
         uint16 _weight = bondLevels[levelID].weight;
+
         uint256 _unweightedShares = _price;
         uint256 _weightedShares = SafeMath.div(SafeMath.mul(_price, _weight), WEIGHT_PRECISION); 
+        //uint256 _weightedShares = SafeMath.div(SafeMath.mul(getBondLevel(levelID).price, _weight), WEIGHT_PRECISION); 
         
         uint256 _shareDebt = SafeMath.div(SafeMath.mul(_unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
         uint256 _rewardDebt = SafeMath.div(SafeMath.mul(_weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
@@ -373,7 +375,7 @@ contract fNFTBond is ERC721, Ownable {
 
     /// @notice Returns Bond level.
     /// @param _levelID Unique fNFT Bond level hex ID.
-    function getBondLevel(bytes4 _levelID) external view returns (BondLevel memory) {
+    function getBondLevel(bytes4 _levelID) public view returns (BondLevel memory) {
        return bondLevels[_levelID];
     }
 

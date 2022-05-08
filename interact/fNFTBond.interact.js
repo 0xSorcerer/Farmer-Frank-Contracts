@@ -30,10 +30,10 @@ const init = async () => {
     console.log(await bond.methods.getActiveBondLevels().call())
     */
 
-    const c = new web3.eth.Contract(BondManagerABI, "0xbF7c1302435Cf6bB5d242d9Bd99931487D9FF933")
+    const c = new web3.eth.Contract(fNFTBondABI, "0x0E7B1CA1f739a6363F446bC7C082262D61a1CA04")
     //console.log(await c.methods.approve("0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0", "999999999999999999999999999999999999").send({from: "0xb3304A14F01Cb5C22E6f5E9fd55b6b6c826e8cc7"}))
     //console.log(await c.methods.startDiscountIn("1", "101", "60", "10", ["1", "2", "3", "4"]).send({from: address}))
-    console.log(await c.methods.batchClaim([0, 1]).send({from: address}))
+    console.log(await c.methods.getActiveBondLevels().call())
 
     //console.log(web3.eth.abi.encodeFunctionSignature('harvest()'))
 }
