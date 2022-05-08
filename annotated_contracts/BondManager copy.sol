@@ -35,7 +35,8 @@ contract BondDiscountable {
         mapping(bytes4 => uint8) purchaseLimit;
     }
 
-    /// @notice discount
+    /// @notice Discounts mapping.
+    /// @dev discount[discountIndex]
     mapping(uint16 => Discount) public discount;
 
     /// @notice Create a discount

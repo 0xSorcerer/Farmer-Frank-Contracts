@@ -4,6 +4,15 @@ pragma solidity ^0.8.0;
 
 interface IBondManager {
 
+    struct BondLevel {
+        bytes4 levelID;
+        bool active;
+        uint256 price;
+        uint16 weight;
+        uint64 sellableAmount;
+        string name;
+    }
+
     function baseToken() external view returns (address);
 
     function bond() external view returns (address);
@@ -36,17 +45,17 @@ interface IBondManager {
 
     function deactivateDiscount() external;
 
-    function addBondLevel (string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external returns (bytes4);
+    function addBondLevelAtIndex (string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint256 _index) external returns (bytes4);
 
-    function addBondLevelAtIndex (string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint16 _index) external returns (bytes4);
+    function addBondLevel (string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external returns (bytes4);
 
     function changeBondLevel (bytes4 levelID, string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external;
 
     function deactivateBondLevel (bytes4 levelID) external;
 
-    function activateBondLevel (bytes4 levelID, uint16 _index) external;
+    function activateBondLevel (bytes4 levelID, uint256 _index) external;
 
-    function rearrangeBondLevel (bytes4 levelID, uint16 _index) external;
+    function rearrangeBondLevel (bytes4 levelID, uint256 _index) external;
 
     function setBaseURI (string memory baseURI_) external;
 
@@ -67,5 +76,9 @@ interface IBondManager {
     function getClaimableAmounts (uint256 _bondID) external view returns (uint256 claimableShares, uint256 claimableRewards);
 
     function linkBondManager() external;
+
+    function getActiveBondLevels() external view returns (bytes4[] memory);
+
+    function getBondLevel(bytes4 _levelID) external view returns (BondLevel memory);
 
 }

@@ -31,6 +31,8 @@ interface IVeJoeStaking {
 /// Manages staking / unstaking of sJOE and veJOE + adding liquidity to BMCJ.
 /// 
 
+//CONVERT SJOE STAKING REWARDS TO JOE
+
 contract FrankTreasury is Ownable {
 
     using SafeMath for uint256;
@@ -115,6 +117,13 @@ contract FrankTreasury is Ownable {
         strategy.LIQUIDITY_POOL = _LIQUIDITY_POOL;
     }
 
+    event Test(
+        uint256 currentRevenue,
+        uint256 feeAmount,
+        uint256 reinvestedAmount,
+        uint256 rewardedAmount
+    );
+
     /// @notice Distribute revenue to BondManager (where bond holders can later claim rewards and shares).
     /// @dev Anyone can call this function, if the current revenue is above a certain threshold (DISTRIBUTE_THRESHOLD). 
     function distribute() external {
@@ -139,6 +148,8 @@ contract FrankTreasury is Ownable {
 
         totalRevenue = SafeMath.add(totalRevenue, currentRevenue);
         currentRevenue = 0;
+
+        emit Test(_currentRevenue, _feeAmount, _reinvestedAmount, _rewardedAmount);
     }
 
     /// @notice Internal function used to reinvest part of revenue when calling distribute().
