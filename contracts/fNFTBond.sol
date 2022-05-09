@@ -11,8 +11,6 @@ import "./interfaces/IBondManager.sol";
 /*
     TODO: 
         TREASURY: Convert sJOE rewards to JOE
-        MANAGER: Add whitelist merkle tree
-        MANAGER/BOND: Fix URI. 
 */
 
 /// @title ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
@@ -105,7 +103,7 @@ contract fNFTBond is ERC721, Ownable {
     /// @param name fNFT token name: fNFT Bond - (JOE).
     /// @param symbol fNFT token symbol: fNFTB.
     constructor(string memory name, string memory symbol) ERC721(name, symbol) {
-        _setBaseURI("https://gist.githubusercontent.com/0xSorcerer/3a9caa1af932f7b4ea57b7a7ef73494c/raw/dfdaa22b1f6c5847e4ad07b46fb57aecdb5d3d99/gistfile1.json");
+        
     }
 
     /// @notice Connect fNFTBond contract (this) to its manager. Manager is needed to get accSharesPerUS() and accRewardsPerWS().
@@ -216,8 +214,7 @@ contract fNFTBond is ERC721, Ownable {
         returns (string memory)
     {
         string memory base = baseURI();
-
-        return base;
+        return string(abi.encodePacked(base, "/", iToHex(abi.encodePacked(bonds[_bondID].levelID))));
     }
     
     /// @dev Used to parse bytes4 levelID to string in order to generate tokenURI. 

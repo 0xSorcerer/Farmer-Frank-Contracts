@@ -45,7 +45,7 @@ contract FrankTreasury is Ownable {
         address LIQUIDITY_POOL;
     }
     
-    //IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
     IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0xf09597ef3cEebd18905ba573E48ec9Ad3A160096);
     IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0xCF6E93c729f07019819Bc67C7ebadda4FaC3b233);
     IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
@@ -129,8 +129,8 @@ contract FrankTreasury is Ownable {
     /// @notice Distribute revenue to BondManager (where bond holders can later claim rewards and shares).
     /// @dev Anyone can call this function, if the current revenue is above a certain threshold (DISTRIBUTE_THRESHOLD). 
     function distribute() external {
-        //harvest();
-        //require(currentRevenue >= DISTRIBUTE_THRESHOLD);
+        harvestAll();
+        require(currentRevenue >= DISTRIBUTE_THRESHOLD);
 
         uint256 _currentRevenue = currentRevenue;
         uint256 _feeAmount = SafeMath.div(SafeMath.mul(_currentRevenue, internalFee), FEE_PRECISION);
@@ -219,7 +219,7 @@ contract FrankTreasury is Ownable {
         JOE.approve(address(TraderJoeRouter), quoteJOE);
         IERC20(otherToken).approve(address(TraderJoeRouter), amountOutOther);
 
-        (, uint256 amountInJoe, ) = TraderJoeRouter.addLiquidity(otherToken, address(JOE), amountOutOther, quoteJOE, 0, 0, address(this), block.timestamp + 1000);
+        (, uint256 amountInJoe, uint256 liquidity) = TraderJoeRouter.addLiquidity(otherToken, address(JOE), amountOutOther, quoteJOE, 0, 0, address(this), block.timestamp + 1000);
 
         require(amountInJoe + safeAmount <= _amount, "Try setting higher slippage.");
 
@@ -229,17 +229,17 @@ contract FrankTreasury is Ownable {
             excess = 0;
         }
 
-        //uint256 pid = getPoolIDFromLPToken(_pool);
+        uint256 pid = getPoolIDFromLPToken(_pool);
 
-        //if (!isPIDActive[pid]) {
-        //    activePIDs.push(pid);
-        //    isPIDActive[pid] = true;
-        //}
+        if (!isPIDActive[pid]) {
+            activePIDs.push(pid);
+            isPIDActive[pid] = true;
+        }
 
-        //IERC20(_pool).approve(address(BMCJ), liquidity);
+        IERC20(_pool).approve(address(BMCJ), liquidity);
         
         uint256 balanceBefore = JOE.balanceOf(address(this));
-        //BMCJ.deposit(pid, liquidity);
+        BMCJ.deposit(pid, liquidity);
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
     }
 
@@ -251,21 +251,28 @@ contract FrankTreasury is Ownable {
     /// @dev External onlyOwner implementation of the _addAndFarmLiquidity function. 
     /// @dev Used to reallocate protocol owned liquidity. First liquidity from a pool is removed with removeLiquidity() and then it is migrated to another pool
     /// through this function. 
-    function addAndFarmLiquidity(uint256 _amount, address _pool) external onlyOwner returns (uint256 excess) {
+    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256 excess) {
         excess = _addAndFarmLiquidity(_amount, _pool);
     }
 
-    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
+    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
+        return _removeLiquidity(_amount, _pool);
+    }
 
+    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
+        uint256 JOEAmount = _removeLiquidity(_amount, _previousPool);
+        uint256 excess = _addAndFarmLiquidity(JOEAmount, _newPool);
+
+        SJoeStaking.deposit(excess);
     }
 
     /// @notice Remove liquidity from Boosted pool and convert assets to JOE.
     /// @param _amount Amount of LP tokens to remove from liquidity.
     /// @param _pool Boosted pool address.
-    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
+    function _removeLiquidity(uint256 _amount, address _pool) internal returns (uint256) {
         uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
         require(liquidityBalance >= _amount);
-/*
+
         uint256 pid = getPoolIDFromLPToken(_pool);
 
         if (_amount == liquidityBalance) {
@@ -284,18 +291,16 @@ contract FrankTreasury is Ownable {
             activePIDs.pop();
             
         }
-        */
+        
 
         IJoePair pair = IJoePair(_pool);
 
         address otherToken = pair.token0() == address(JOE) ? pair.token1() : pair.token0();
 
         uint256 balanceBefore = JOE.balanceOf(address(this));
-        //BMCJ.withdraw(pid, _amount);
+        BMCJ.withdraw(pid, _amount);
         uint256 balanceAfter = JOE.balanceOf(address(this));
         currentRevenue +=  balanceAfter - balanceBefore;
-
-        //SAFETY SLIPPAGE
 
         IERC20(_pool).approve(address(TraderJoeRouter), _amount);
 
@@ -316,12 +321,10 @@ contract FrankTreasury is Ownable {
     function harvestAll() public { 
         uint256 balanceBefore = JOE.balanceOf(address(this));
         
-        /*
         for(uint i = 0; i < activePIDs.length; i++) {
-            BMCJ.deposit(_pid, 0);
+            BMCJ.deposit(activePIDs[i], 0);
         }
-        */
-
+        
         claimJoeFromStaking();
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
     }
@@ -375,7 +378,7 @@ contract FrankTreasury is Ownable {
 
     /// @notice Get PID from LP token address.
     /// @param _token LP token address. 
-    /*
+    
     function getPoolIDFromLPToken(address _token) internal view returns (uint256) {
         for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
             (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
@@ -385,7 +388,7 @@ contract FrankTreasury is Ownable {
         }
         revert();
     }
-    */
+    
 
     function withdraw(address _token, uint256 _amount, address _receiver) external onlyOwner {
         IERC20(_token).transfer(_receiver, _amount);
