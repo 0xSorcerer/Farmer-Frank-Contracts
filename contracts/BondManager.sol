@@ -10,6 +10,7 @@ import "./interfaces/IERC20.sol";
 import "./libraries/SafeERC20.sol";
 import "./libraries/SafeMath.sol";
 import "./interfaces/IFrankTreasury.sol";
+import "./other/MerkleProof.sol";
 
 
 contract BondDiscountable {
@@ -29,7 +30,9 @@ contract BondDiscountable {
     /// @param purchaseLimit Mapping of how many bonds per level can be minted every price update.
     struct Discount {
         uint256 startTime;
+        uint256 endWhitelistTime;
         uint256 endTime;
+        bytes32 merkleRoot;
         uint16 discountRate;
         uint64 updateFrequency;
         mapping(bytes4 => uint8) purchaseLimit;
@@ -72,6 +75,26 @@ contract BondDiscountable {
         }
     }
 
+    function _startWhitelistedDiscount(
+        uint256 _startTime,
+        uint256 _endWhitelistTime,
+        uint256 _endTime,
+        bytes32 _merkleRoot,
+        uint16 _discountRate,
+        uint64 _updateFrequency,
+        uint8[] memory _purchaseLimit,
+        bytes4[] memory _levelIDs
+    ) internal {
+        require(_endWhitelistTime > _startTime);
+        require(_endWhitelistTime <= _endTime);
+        //Check divisibility
+
+        _startDiscount(_startTime, _endTime, _discountRate, _updateFrequency, _purchaseLimit, _levelIDs);
+
+        discount[discountIndex].endWhitelistTime = _endWhitelistTime;
+        discount[discountIndex].merkleRoot = _merkleRoot;
+    }
+
     /// @notice Deactivate and cancel the discount
     function _deactivateDiscount() internal {
         discountIndex++;
@@ -79,7 +102,7 @@ contract BondDiscountable {
 
     /// @notice Returns the discount updateFactor
     /// updateFactor is the nth discount price update
-    function getDiscountUpdateFactor() internal view returns (uint8 updateFactor) {
+    function getDiscountUpdateFactor() public view returns (uint8 updateFactor) {
         uint256 currentTime = block.timestamp;
         updateFactor = uint8((currentTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency);
     }
@@ -99,6 +122,11 @@ contract BondDiscountable {
         }
 
         return false;
+    }
+    
+    function isDiscountWhitelisted() public view returns (bool whitelisted) {
+        require(isDiscountPlanned());
+        discount[discountIndex].endWhitelistTime == 0 ? whitelisted = false : whitelisted = true;
     }
 }
 
@@ -229,6 +257,18 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 cTime = block.timestamp;
 
         _startDiscount(cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
+        emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
+    }
+
+    function startWhitelistedDiscountAt(uint256 _startAt, uint256 _endWhitelistAt, uint256 _endAt, bytes32 _merkleRoot, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
+        _startWhitelistedDiscount(_startAt, _endWhitelistAt, _endAt, _merkleRoot, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
+        emit CreateDiscount(discountIndex, _startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit);
+    }
+
+    function startWhitelistedDiscountIn(uint256 _startIn, uint256 _endWhitelistIn, uint256 _endIn, bytes32 _merkleRoot, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
+        uint256 cTime = block.timestamp;
+
+        _startWhitelistedDiscount(cTime + _startIn, cTime + _endWhitelistIn, cTime + _endIn, _merkleRoot, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
         emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
@@ -394,10 +434,7 @@ contract BondManager is Ownable, BondDiscountable {
         emit Set(isSaleActive);
     }
 
-    /// @notice Public function that users will be utilizing to mint their Bond.
-    /// @param levelID Bond level hex ID (provided by the dAPP or retreived through getActiveBondLevels() in fNFT Bond contract).
-    /// @param _amount Amount of fNFT Bonds being minted. There is a limit of 20 Bonds per transaction.
-    function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount) public {
+    function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount, bytes32[] calldata _merkleProof) public {
         require(isSaleActive);
         require(_amount > 0 && _amount <= 20);
         require(getBondLevel(levelID).active);
@@ -415,6 +452,12 @@ contract BondManager is Ownable, BondDiscountable {
 
         // If there is a discount, contract must check that there are enough Bonds left for that discount updateFactor period.
         if(discountActive) {
+
+            if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
+                bytes32 leaf = keccak256(abi.encodePacked(sender));
+                require(MerkleProof.verify(_merkleProof, discount[discountIndex].merkleRoot, leaf), "You aren't whitelisted!");
+            }
+
             uint8 updateFactor = getDiscountUpdateFactor();
             uint16 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], _amount));
             require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "C01");
