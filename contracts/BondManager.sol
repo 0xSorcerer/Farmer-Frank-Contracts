@@ -100,10 +100,9 @@ contract BondDiscountable {
 
         return false;
     }
-
 }
 
-//ADD FARM POINTS
+// Whitelist
 
 contract BondManager is Ownable, BondDiscountable {
 
@@ -161,6 +160,8 @@ contract BondManager is Ownable, BondDiscountable {
     bytes4[] private activeBondLevels;
 
     mapping(bytes4 => uint256) private bondsSold;
+
+    mapping(address => uint256) private userXP;
 
     //------------
 
@@ -430,11 +431,17 @@ contract BondManager is Ownable, BondDiscountable {
 
         // Increments shares metrics.
 
+        // Unweighted shares must be equal to the amount the user pays for the bond. So if the user pays
+        // a discounted price, unweighted shares must be discounted as well.
         uint256 unweightedShares = bondPrice;
+        // Weighted shares utilizes the actual bond level price despite any discount, otherwise
+        // discount would be mathematically inefficient.
         uint256 weightedShares = bondLevels[levelID].price * bondLevels[levelID].weight / WEIGHT_PRECISION;
 
         totalUnweightedShares += unweightedShares * _amount;
         totalWeightedShares += weightedShares * _amount;
+
+        userXP[sender] += bondLevels[levelID].price;
 
         // Call fNFT mintBond function.
         //bond.mintBonds(sender, levelID, uint8(_amount), bondPrice);
@@ -549,5 +556,14 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _levelID Unique fNFT Bond level hex ID.
     function getBondLevel(bytes4 _levelID) public view returns (BondLevel memory) {
        return bondLevels[_levelID];
+    }
+
+    function setUserXP(uint256 _amount, address _user) external {
+        require(_msgSender() == address(bond));
+        userXP[_user] = _amount;
+    }
+
+    function getUserXP(address _user) external view returns (uint256) {
+        return userXP[_user];
     }
 }

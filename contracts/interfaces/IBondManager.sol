@@ -81,4 +81,8 @@ interface IBondManager {
 
     function getBondLevel(bytes4 _levelID) external view returns (BondLevel memory);
 
+    function setUserXP(uint256 _amount, address _user) external;
+
+    function getUserXP(address _user) external view returns (uint256);
+
 }

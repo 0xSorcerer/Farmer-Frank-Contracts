@@ -55,8 +55,9 @@ contract FrankTreasury is Ownable {
     address private constant teamAddress = 0xE6461Da23098d2420Ce9A35b329FA82db0919c30;
     address private constant investorAddress = 0xE6461Da23098d2420Ce9A35b329FA82db0919c30;
     uint256 private constant FEE_PRECISION = 100_000;
+
     uint256 private internalFee;
-    uint256 bondedTokens;
+    
     uint256 public currentRevenue;
     uint256 public totalRevenue;
 
@@ -172,7 +173,6 @@ contract FrankTreasury is Ownable {
         require(_msgSender() == address(BondManager));
 
         JOE.safeTransferFrom(_sender, address(this), _amount);
-        bondedTokens += _amount;
 
         uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_BONDED_JOE);
 

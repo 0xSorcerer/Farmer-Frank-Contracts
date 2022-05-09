@@ -10,9 +10,9 @@ import "./interfaces/IBondManager.sol";
 
 /*
     TODO: 
-        TRANSFER RESET EARNED
-        Remove totalBondLevels and instead use .length
-        Change base price to price
+        TREASURY: Convert sJOE rewards to JOE
+        MANAGER: Add whitelist merkle tree
+        MANAGER/BOND: Fix URI. 
 */
 
 /// @title ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
@@ -239,8 +239,11 @@ contract fNFTBond is ERC721, Ownable {
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory _data) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
-        Bond storage _bond = bonds[tokenId];
-        _bond.earned = 0;
+        if(from != to) {
+            Bond storage _bond = bonds[tokenId];
+            _bond.earned = 0;
+            bondManager.setUserXP(bondManager.getUserXP(from) - bondManager.getBondLevel(bonds[tokenId].levelID).price, from);
+        }
 
         _safeTransfer(from, to, tokenId, _data);
     }
@@ -250,8 +253,11 @@ contract fNFTBond is ERC721, Ownable {
     function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
-        Bond storage _bond = bonds[tokenId];
-        _bond.earned = 0;
+        if(from != to) {
+            Bond storage _bond = bonds[tokenId];
+            _bond.earned = 0;
+            bondManager.setUserXP(bondManager.getUserXP(from) - bondManager.getBondLevel(bonds[tokenId].levelID).price, from);
+        }
 
         _safeTransfer(from, to, tokenId, "");
     }
@@ -261,8 +267,11 @@ contract fNFTBond is ERC721, Ownable {
     function transferFrom(address from, address to, uint256 tokenId) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
-        Bond storage _bond = bonds[tokenId];
-        _bond.earned = 0;
+        if(from != to) {
+            Bond storage _bond = bonds[tokenId];
+            _bond.earned = 0;
+            bondManager.setUserXP(bondManager.getUserXP(from) - bondManager.getBondLevel(bonds[tokenId].levelID).price, from);
+        }
 
         _transfer(from, to, tokenId);
     }
