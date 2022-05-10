@@ -8,6 +8,7 @@ const VeJoeStaking = artifacts.require('VeJoeStaking.sol')
 
 const FrankTreasury = artifacts.require('FrankTreasury.sol')
 
+
 module.exports = async (deployer) => {
 
     await deployer.deploy(FrankTreasury)
