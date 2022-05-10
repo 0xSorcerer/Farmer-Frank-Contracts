@@ -6,7 +6,7 @@ interface IFNFTBond {
 
     struct Bond {
         uint256 bondID;
-        uint48 mint;
+        uint224 mint;
         bytes4 levelID;
         uint256 earned;
         uint256 unweightedShares;

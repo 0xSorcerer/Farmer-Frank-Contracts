@@ -142,8 +142,6 @@ contract BondManager is Ownable, BondDiscountable {
         bytes4 levelID;
         // Whether bonds of this level can be currently minted.
         bool active;
-        // Bond price.
-        uint256 price;
         // Bond weight multipliers. Used to calculate weighted shares.
         // Weight is percentage (out of 100), hence weight = 100 would mean 1x (base multiplier).
         // Hence, WEIGHT_PRECISION = 100. 
@@ -152,6 +150,8 @@ contract BondManager is Ownable, BondDiscountable {
         uint64 sellableAmount;
         // Bond level name used on Farmer Frank's UI.
         string name;
+        // Bond price.
+        uint256 price;
     }
 
     /// @notice fNFT Bond interface.
@@ -183,9 +183,9 @@ contract BondManager is Ownable, BondDiscountable {
 
     uint16 private constant MAX_BOND_LEVELS = 10;
 
-    mapping(bytes4 => BondLevel) private bondLevels;
-
     bytes4[] private activeBondLevels;
+
+    mapping(bytes4 => BondLevel) private bondLevels;
 
     mapping(bytes4 => uint256) private bondsSold;
 
@@ -224,10 +224,10 @@ contract BondManager is Ownable, BondDiscountable {
 
         setTreasury(_treasury);
 
-        addBondLevelAtIndex("Level I", SafeMath.mul(10, GLOBAL_PRECISION), 100, 0, activeBondLevels.length);
-        addBondLevelAtIndex("Level II", SafeMath.mul(100, GLOBAL_PRECISION), 105, 0, activeBondLevels.length);
-        addBondLevelAtIndex("Level III", SafeMath.mul(1000, GLOBAL_PRECISION), 110, 0, activeBondLevels.length);
-        addBondLevelAtIndex("Level IV", SafeMath.mul(5000, GLOBAL_PRECISION), 115, 0, activeBondLevels.length);
+        addBondLevelAtIndex("Level I", 100, 0, activeBondLevels.length, SafeMath.mul(10, GLOBAL_PRECISION));
+        addBondLevelAtIndex("Level II", 105, 0, activeBondLevels.length, SafeMath.mul(100, GLOBAL_PRECISION));
+        addBondLevelAtIndex("Level III", 110, 0, activeBondLevels.length, SafeMath.mul(1000, GLOBAL_PRECISION));
+        addBondLevelAtIndex("Level IV", 115, 0, activeBondLevels.length, SafeMath.mul(5000, GLOBAL_PRECISION));
     }
 
     function setTreasury(address _treasury) public onlyOwner {
@@ -286,20 +286,20 @@ contract BondManager is Ownable, BondDiscountable {
     /// @dev When adding a bond level whose index isn't activeBondLevels.length, the contract loops through
     /// the array shifting its elements. We disregard unbounded gas cost possible error as the contract
     /// is designed to store a "concise" amount of Bond levels: 10.
-    function addBondLevelAtIndex(string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint256 _index) public onlyOwner returns (bytes4) {
+    function addBondLevelAtIndex(string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _index, uint256 _price) public onlyOwner returns (bytes4) {
         require(MAX_BOND_LEVELS > activeBondLevels.length, "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(_index <= activeBondLevels.length, "fNFT Bond: Index out of bounds.");
 
         // Calculate unique Bond level hex ID.
-        bytes4 levelID = bytes4(keccak256(abi.encodePacked(_name, _price, _weight, block.timestamp)));
+        bytes4 levelID = bytes4(keccak256(abi.encodePacked(_name, _weight, block.timestamp, _price)));
 
         BondLevel memory _level = BondLevel({
             levelID: levelID,
             active: true,
-            price: _price,
             weight: _weight,
             sellableAmount: _sellableAmount,
-            name: _name
+            name: _name,
+            price: _price
         });
 
         // Dealing with activeBondLevels elements shift to add Bond level at desired _index.
@@ -327,8 +327,8 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @dev Doesn't take _index as a parameter and appends the Bond level at the end of the active levels array.
-    function addBondLevel(string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external onlyOwner returns (bytes4) {
-        return addBondLevelAtIndex(_name, _price, _weight, _sellableAmount, activeBondLevels.length);
+    function addBondLevel(string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _price) external onlyOwner returns (bytes4) {
+        return addBondLevelAtIndex(_name, _weight, _sellableAmount, activeBondLevels.length, _price);
     }
 
     /// @notice Change a Bond level.
@@ -336,14 +336,14 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _name New Bond level name.
     /// @param _price New Bond price.
     /// @param _weight New Weight percentage of Bond level (>= 100).
-    function changeBondLevel(bytes4 levelID, string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external onlyOwner {
+    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _price) external onlyOwner {
         bondLevels[levelID] = BondLevel({
             levelID: levelID,
             active: true,
-            price: _price,
             weight: _weight,
             sellableAmount: _sellableAmount,
-            name: _name
+            name: _name,
+            price: _price
         });
 
         //emit BondLevelChanged(levelID, _price, _weight, _name);
@@ -452,7 +452,6 @@ contract BondManager is Ownable, BondDiscountable {
 
         // If there is a discount, contract must check that there are enough Bonds left for that discount updateFactor period.
         if(discountActive) {
-
             if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
                 bytes32 leaf = keccak256(abi.encodePacked(sender));
                 require(MerkleProof.verify(_merkleProof, discount[discountIndex].merkleRoot, leaf), "You aren't whitelisted!");
@@ -467,7 +466,7 @@ contract BondManager is Ownable, BondDiscountable {
         }
 
         // Checks that buyer has enough funds to mint the bond.
-        require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
+        //require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
         // Transfers funds to trasury contract.
         treasury.bondDeposit(bondPrice * _amount, sender);
@@ -484,7 +483,7 @@ contract BondManager is Ownable, BondDiscountable {
         totalUnweightedShares += unweightedShares * _amount;
         totalWeightedShares += weightedShares * _amount;
 
-        userXP[sender] += bondLevels[levelID].price;
+        userXP[sender] += bondLevels[levelID].price * _amount;
 
         // Call fNFT mintBond function.
         //bond.mintBonds(sender, levelID, uint8(_amount), bondPrice);

@@ -8,18 +8,13 @@ import "./libraries/SafeMath.sol";
 import "./libraries/Address.sol";
 import "./interfaces/IBondManager.sol";
 
-/*
-    TODO: 
-        TREASURY: Convert sJOE rewards to JOE
-*/
-
 /// @title ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
 /// @author @0xSorcerer
 
-/// @notice Users are not supposed to interract with this contract. Most functions are marked
+/// Users are not supposed to interract with this contract. Most functions are marked
 /// as onlyOwner, where the contract owner will be a BondManager contract. Users will use the BondManager
 /// contract to mint and claim, which will call the functions in this contract.
-/// This contract holds Bond Data and Bond Level data. 
+/// This contract holds Bond Data.
 
 contract fNFTBond is ERC721, Ownable {
 
@@ -31,60 +26,34 @@ contract fNFTBond is ERC721, Ownable {
         // Unique fNFT Bond ID.
         uint256 bondID;
         // Mint timestamp.
-        uint48 mint;
+        // uint224 + bytes4 = 32 bytes -> Gas optimization.
+        uint224 mint;
         // Unique fNFT Bond level hex ID.
         bytes4 levelID;
-        // Amount of REWARDS (not shares) earned historically when holding bond. Resets on transfer.
+        // Amount of token rewards (not shares) earned historically when holding bond. Resets on transfer.
         uint256 earned;
         // Amount of unweighted shares.
         uint256 unweightedShares;
         // Amount of weighted shares.
         uint256 weightedShares;
-        // Reward debt (JOE token reward debt).
+        // Reward debt (token reward debt).
         uint256 rewardDebt;
-        // Share debt (Bond shares reward debt).
+        // Share debt (shares reward debt).
         uint256 shareDebt;
     }
 
-    /// @notice Bond manager interface used to get accSharesPerUS() and accRewardsPerWS().
+    /// @notice Bond manager interface.
     IBondManager public bondManager;
 
-    /// @dev Precision constants
+    /// @dev Precision constants.
     uint256 private constant GLOBAL_PRECISION = 10**18;
     uint256 private constant WEIGHT_PRECISION = 100;
 
-    /// @dev Maximum amount of Bond levels the bond can support.
+    /// @dev Maximum amount of Bond levels the contract can support.
     uint16 private constant MAX_BOND_LEVELS = 10;
 
     /// @dev Mapping storing all bonds data.
     mapping(uint256 => Bond) private bonds; 
-    /// @dev Array storing all active bonds level: bonds that can be minted. 
-    /// @dev Mapping to store how many bonds were minted per level. Used only for bonds with maximum supply.
-    mapping(bytes4 => uint256) private bondsSold;
-    /// @notice Amount of currently active Bond levels
-    /// @dev Must be <= MAX_BOND_LEVELS
-
-    event NewBondLevel (
-        bytes4 indexed levelID,
-        uint256 price,
-        uint16 weight,
-        string name
-    );
-
-    event BondLevelChanged (
-        bytes4 indexed levelID,
-        uint256 price,
-        uint16 weight,
-        string name
-    );
-
-    event BondLevelDeactivated (
-        bytes4 indexed levelID
-    );
-
-    event BondLevelActivated (
-        bytes4 indexed levelID
-    );
 
     event BondCreated (
         uint256 indexed bondID,
@@ -100,30 +69,35 @@ contract fNFTBond is ERC721, Ownable {
         uint256 issuedRewards
     );
 
-    /// @param name fNFT token name: fNFT Bond - (JOE).
-    /// @param symbol fNFT token symbol: fNFTB.
     constructor(string memory name, string memory symbol) ERC721(name, symbol) {
         
     }
 
-    /// @notice Connect fNFTBond contract (this) to its manager. Manager is needed to get accSharesPerUS() and accRewardsPerWS().
+    /// @notice Connect fNFTBond contract (this) to its manager.
+    /// @param _bondManager Bond Manager contract address.
     function _linkBondManager(address _bondManager) external onlyOwner {
         require(_bondManager != address(0), "fNFT Bond: Bond manager can't be set to the 0 address.");
         bondManager = IBondManager(_bondManager);
     }
 
+    /// @notice Function called by BondManager. Mints fNFT Bond (ERC721).
+    /// @param _account Account receiving bond.
+    /// @param levelID Bond level hex ID.
+    /// @param _amount Amount of tokens that will get minted.
+    /// @param _weightedShares Amount of weighted shares the bond will have at mint.
+    /// @param _unweightedShares Amount of unweighted shares the bond will have at mint.
     function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _weightedShares, uint256 _unweightedShares) onlyOwner external {
         require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
-
-        //uint256 _weightedShares = SafeMath.div(SafeMath.mul(getBondLevel(levelID).price, _weight), WEIGHT_PRECISION); 
         
+        // Calculate current debt amounts. 
         uint256 _shareDebt = SafeMath.div(SafeMath.mul(_unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
         uint256 _rewardDebt = SafeMath.div(SafeMath.mul(_weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
-        uint48 timestamp = uint48(block.timestamp);
+        uint224 timestamp = uint224(block.timestamp);
 
         for (uint8 i = 0; i < _amount; i++) {
             uint256 _bondID = totalSupply();
 
+            // Add bond object to bonds mapping.
             bonds[_bondID] = Bond({
                 bondID: _bondID,
                 mint: timestamp,
@@ -136,16 +110,16 @@ contract fNFTBond is ERC721, Ownable {
             });
 
             _safeMint(_account, _bondID);
-            emit BondCreated(_bondID, levelID, _account, timestamp);
+            //emit BondCreated(_bondID, levelID, _account, timestamp);
         }
         
     }
 
-    /// @notice Claim rewards & shares. Used to update bond's data.
+    /// @notice Function called by BondManager. Updates bond's shares & debt at claim. 
     /// @param _account Account calling the claim function from bondManager.
-    /// @param _bondID Unique fNFT Bond uint ID.
-    /// @param issuedRewards Rewards issued to bond holder. Used to update earned parameter.
-    /// @param issuedShares Shares issued to bond. Used to calculate new shares amount.
+    /// @param _bondID Unique fNFT Bond ID.
+    /// @param issuedRewards Token rewards issued to bond holder.
+    /// @param issuedShares Shares rewards issued to bond.
     function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external onlyIfExists(_bondID) {
         require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
         require(ownerOf(_bondID) == _account);
@@ -153,6 +127,8 @@ contract fNFTBond is ERC721, Ownable {
         Bond memory _bond = bonds[_bondID];
 
         _bond.earned = SafeMath.add(_bond.earned, issuedRewards);
+
+        // Update shares.
         _bond.unweightedShares = SafeMath.add(_bond.unweightedShares, issuedShares);
         _bond.weightedShares = SafeMath.add(
             _bond.weightedShares,
@@ -164,6 +140,8 @@ contract fNFTBond is ERC721, Ownable {
                 WEIGHT_PRECISION
             )
         );
+
+        // Update debt
         _bond.shareDebt = SafeMath.div(SafeMath.mul(_bond.unweightedShares, bondManager.accSharesPerUS()), GLOBAL_PRECISION);
         _bond.rewardDebt = SafeMath.div(SafeMath.mul(_bond.weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
 
@@ -172,7 +150,7 @@ contract fNFTBond is ERC721, Ownable {
         emit Claim(_bondID, _account, issuedShares, issuedRewards);
     }
 
-    /// @notice Set base URI for fNFT Bond contract.
+    /// @notice Function called by BondManager. Set base URI for fNFT Bond contract.
     /// @param baseURI_ New base URI.
     function setBaseURI(string memory baseURI_) external onlyOwner {
         _setBaseURI(baseURI_);
@@ -240,6 +218,7 @@ contract fNFTBond is ERC721, Ownable {
             Bond storage _bond = bonds[tokenId];
             _bond.earned = 0;
             bondManager.setUserXP(bondManager.getUserXP(from) - bondManager.getBondLevel(bonds[tokenId].levelID).price, from);
+            bondManager.setUserXP(bondManager.getUserXP(to) + bondManager.getBondLevel(bonds[tokenId].levelID).price, to);
         }
 
         _safeTransfer(from, to, tokenId, _data);
@@ -254,6 +233,7 @@ contract fNFTBond is ERC721, Ownable {
             Bond storage _bond = bonds[tokenId];
             _bond.earned = 0;
             bondManager.setUserXP(bondManager.getUserXP(from) - bondManager.getBondLevel(bonds[tokenId].levelID).price, from);
+            bondManager.setUserXP(bondManager.getUserXP(to) + bondManager.getBondLevel(bonds[tokenId].levelID).price, to);
         }
 
         _safeTransfer(from, to, tokenId, "");
@@ -268,6 +248,7 @@ contract fNFTBond is ERC721, Ownable {
             Bond storage _bond = bonds[tokenId];
             _bond.earned = 0;
             bondManager.setUserXP(bondManager.getUserXP(from) - bondManager.getBondLevel(bonds[tokenId].levelID).price, from);
+            bondManager.setUserXP(bondManager.getUserXP(to) + bondManager.getBondLevel(bonds[tokenId].levelID).price, to);
         }
 
         _transfer(from, to, tokenId);

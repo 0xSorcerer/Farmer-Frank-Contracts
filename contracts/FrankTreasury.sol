@@ -44,7 +44,7 @@ contract FrankTreasury is Ownable {
         uint24 PROPORTION_REINVESTMENTS;
         address LIQUIDITY_POOL;
     }
-    
+
     //IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
     IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0xf09597ef3cEebd18905ba573E48ec9Ad3A160096);
     IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0xCF6E93c729f07019819Bc67C7ebadda4FaC3b233);
@@ -251,18 +251,25 @@ contract FrankTreasury is Ownable {
     /// @dev External onlyOwner implementation of the _addAndFarmLiquidity function. 
     /// @dev Used to reallocate protocol owned liquidity. First liquidity from a pool is removed with removeLiquidity() and then it is migrated to another pool
     /// through this function. 
-    function addAndFarmLiquidity(uint256 _amount, address _pool) external onlyOwner returns (uint256 excess) {
+    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256 excess) {
         excess = _addAndFarmLiquidity(_amount, _pool);
     }
 
-    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
+    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
+        return _removeLiquidity(_amount, _pool);
+    }
 
+    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
+        uint256 JOEAmount = _removeLiquidity(_amount, _previousPool);
+        uint256 excess = _addAndFarmLiquidity(JOEAmount, _newPool);
+
+        SJoeStaking.deposit(excess);
     }
 
     /// @notice Remove liquidity from Boosted pool and convert assets to JOE.
     /// @param _amount Amount of LP tokens to remove from liquidity.
     /// @param _pool Boosted pool address.
-    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
+    function _removeLiquidity(uint256 _amount, address _pool) internal returns (uint256) {
         uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
         require(liquidityBalance >= _amount);
 /*
@@ -363,9 +370,10 @@ contract FrankTreasury is Ownable {
         }
 
         require(proportionTotal == 100_000);
-
         require(amountTotal <= amount_);
 
+        // If there is a small excess due _amount not being perfectly divisible by the proportions, that excess is
+        // added to the first amount -> Always (sJOE) in this case.
         if (amountTotal < amount_) {
             _amounts[0] += (amount_ - amountTotal);
         }

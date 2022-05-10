@@ -7,10 +7,10 @@ interface IBondManager {
     struct BondLevel {
         bytes4 levelID;
         bool active;
-        uint256 price;
         uint16 weight;
         uint64 sellableAmount;
         string name;
+        uint256 price;
     }
 
     function baseToken() external view returns (address);
@@ -45,11 +45,11 @@ interface IBondManager {
 
     function deactivateDiscount() external;
 
-    function addBondLevelAtIndex (string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount, uint256 _index) external returns (bytes4);
+    function addBondLevelAtIndex (string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _index, uint256 _price) external returns (bytes4);
 
-    function addBondLevel (string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external returns (bytes4);
+    function addBondLevel (string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _price) external returns (bytes4);
 
-    function changeBondLevel (bytes4 levelID, string memory _name, uint256 _price, uint16 _weight, uint32 _sellableAmount) external;
+    function changeBondLevel (bytes4 levelID, string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _price) external;
 
     function deactivateBondLevel (bytes4 levelID) external;
 
