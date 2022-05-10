@@ -65,7 +65,7 @@ contract FrankTreasury is Ownable {
 
     constructor() {
         setFee(2000);
-        setStrategy([50000, 50000], [uint24(45000),45000,10000], 50000, 0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0);
+        setStrategy([50000, 50000], [45000,45000,10000], 50000, 0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0);
     }
 
     /// @notice Change the bond manager address.

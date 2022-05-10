@@ -12,47 +12,83 @@ import "./libraries/SafeMath.sol";
 import "./interfaces/IFrankTreasury.sol";
 import "./other/MerkleProof.sol";
 
+/// @title Contract that deals with the discounting of fNFT Bonds. 
+/// @author @0xSorcerer
+
 contract BondDiscountable {
 
-    ///@dev Discount index. Used to map the bonds sold.
-    uint16 internal discountIndex = 0;
-    
-    /// @dev Keep track of how many bonds have been sold during a discount
-    /// @dev discountedBondsSold[discountIndex][updateFactor][levelID]
-    mapping(uint16 => mapping(uint16 => mapping(bytes4 => uint16))) internal discountedBondsSold;
-
-    /// @notice Info of a discount
-    /// @param startTime Timestamp of when discount should start
-    /// @param endTime Timestamp of when discount should end
-    /// @param discountRate Discount percentage (out of 100)
-    /// @param updateFrequency Amount in seconds of how often discount price should update
-    /// @param purchaseLimit Mapping of how many bonds per level can be minted every price update.
+    /// @notice Info of each Discount. 
     struct Discount {
+        // Timestamp at which the discount will start.
         uint256 startTime;
+        // Timestamp at which whitelist will no longer be required to purchase bond (if 0 whitelist won't be required).
         uint256 endWhitelistTime;
+        // Timestamp at which the discount will end.
         uint256 endTime;
+        // Root of whitelisted addresses merkle tree.
         bytes32 merkleRoot;
+        // Discount rate (percentage) (out of 100).
+        // Gas optimization uint16 + uint240 = 32 bytes. 
         uint16 discountRate;
-        uint64 updateFrequency;
-        mapping(bytes4 => uint8) purchaseLimit;
+        // Amount in seconds of how often discount price should update. 
+        uint240 updateFrequency;
+        // Mapping of how many bonds per level can be minted every price update.
+        mapping(bytes4 => uint256) purchaseLimit;
     }
 
-    /// @notice Discounts mapping.
-    /// @dev discount[discountIndex]
-    mapping(uint16 => Discount) internal discount;
+    ///@dev Discount index. Used to distinguish between different discounts.
+    uint256 internal discountIndex = 0;
+    
+    /// @dev Keep track of how many bonds have been sold during a discount.
+    /// @dev discountedBondsSold[discountIndex][updateFactor][levelID]
+    mapping(uint256 => mapping(uint256 => mapping(bytes4 => uint256))) internal discountedBondsSold;
 
-    /// @notice Create a discount
-    /// @param _startTime Timestamp at which discount will start 
-    /// @param _endTime Timestamp at which discount will end
-    /// @param _discountRate Discount percentage (out of 100)
-    /// @param _updateFrequency Amount in seconds of how often discount price should update
+    /// @dev Discounts mapping.
+    /// @dev discount[discountIndex]
+    mapping(uint256 => Discount) internal discount;
+
+    /// @notice Returns the discount updateFactor.
+    /// @return updateFactor The nth discount price update.
+    function getDiscountUpdateFactor() public view returns (uint256 updateFactor) {
+        updateFactor = (block.timestamp - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency;
+    }
+
+    /// @notice Returns whether a discount is planned for the future.
+    function isDiscountPlanned() public view returns (bool) {
+        return !(discount[discountIndex].startTime == 0);
+    }
+
+    /// @notice Returns whether a discount is currently active.
+    function isDiscountActive() public view returns (bool) {
+        if (isDiscountPlanned()) {
+            uint256 cTime = block.timestamp;
+            if (discount[discountIndex].startTime < cTime && discount[discountIndex].endTime > cTime) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    
+    /// @notice Returns whether a discount requires whitelist to participate.
+    function isDiscountWhitelisted() public view returns (bool whitelisted) {
+        require(isDiscountPlanned());
+        discount[discountIndex].endWhitelistTime == 0 ? whitelisted = false : whitelisted = true;
+    }
+
+    /// @notice Create a non whitelisted discount.
+    /// @param _startTime Timestamp at which discount will start. 
+    /// @param _endTime Timestamp at which discount will end.
+    /// @param _discountRate Discount percentage (out of 100).
+    /// @param _updateFrequency Amount in seconds of how often discount price should update.
     /// @param _purchaseLimit Mapping of how many bonds per level can be minted every price update.
+    /// @param _levelIDs Bond level hex IDs for all active bond levels. 
     function _startDiscount(
         uint256 _startTime,
         uint256 _endTime,
         uint16 _discountRate,
-        uint64 _updateFrequency,
-        uint8[] memory _purchaseLimit,
+        uint240 _updateFrequency,
+        uint256[] memory _purchaseLimit,
         bytes4[] memory _levelIDs
     ) internal {
         uint256 cTime = block.timestamp;
@@ -74,19 +110,28 @@ contract BondDiscountable {
         }
     }
 
+    /// @notice Create a non whitelisted discount.
+    /// @param _startTime Timestamp at which discount will start. 
+    /// @param _endWhitelistTime Timestamp at which whitelist will no longer be required to purchase bond (if 0 whitelist won't be required).
+    /// @param _endTime Timestamp at which discount will end.
+    /// @param _merkleRoot Root of whitelisted addresses merkle tree.
+    /// @param _discountRate Discount percentage (out of 100).
+    /// @param _updateFrequency Amount in seconds of how often discount price should update.
+    /// @param _purchaseLimit Mapping of how many bonds per level can be minted every price update.
+    /// @param _levelIDs Bond level hex IDs for all active bond levels. 
     function _startWhitelistedDiscount(
         uint256 _startTime,
         uint256 _endWhitelistTime,
         uint256 _endTime,
         bytes32 _merkleRoot,
         uint16 _discountRate,
-        uint64 _updateFrequency,
-        uint8[] memory _purchaseLimit,
+        uint240 _updateFrequency,
+        uint256[] memory _purchaseLimit,
         bytes4[] memory _levelIDs
     ) internal {
         require(_endWhitelistTime > _startTime);
         require(_endWhitelistTime <= _endTime);
-        //Check divisibility
+        require((_endWhitelistTime - _startTime) % _updateFrequency == 0);
 
         _startDiscount(_startTime, _endTime, _discountRate, _updateFrequency, _purchaseLimit, _levelIDs);
 
@@ -94,40 +139,16 @@ contract BondDiscountable {
         discount[discountIndex].merkleRoot = _merkleRoot;
     }
 
-    /// @notice Deactivate and cancel the discount
+    /// @notice Cancels current discount.
     function _deactivateDiscount() internal {
         discountIndex++;
     }
-
-    /// @notice Returns the discount updateFactor
-    /// updateFactor is the nth discount price update
-    function getDiscountUpdateFactor() public view returns (uint8 updateFactor) {
-        uint256 currentTime = block.timestamp;
-        updateFactor = uint8((currentTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency);
-    }
-
-    /// @notice Returns whether a discount is planned for the future
-    function isDiscountPlanned() public view returns (bool) {
-        return !(discount[discountIndex].startTime == 0);
-    }
-
-    /// @notice Returns whether a discount is currently active
-    function isDiscountActive() public view returns (bool) {
-        if (isDiscountPlanned()) {
-            uint256 cTime = block.timestamp;
-            if (discount[discountIndex].startTime < cTime && discount[discountIndex].endTime > cTime) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-    
-    function isDiscountWhitelisted() public view returns (bool whitelisted) {
-        require(isDiscountPlanned());
-        discount[discountIndex].endWhitelistTime == 0 ? whitelisted = false : whitelisted = true;
-    }
 }
+
+/// @title Middleman between a user and its fNFT bond.  
+/// @author @0xSorcerer
+
+/// Users will use this contract to mint bonds and claim their rewards.
 
 contract BondManager is Ownable, BondDiscountable {
 
@@ -295,9 +316,9 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _discountRate Discount percentage (out of 100).
     /// @param _updateFrequency Amount in seconds of how often discount price should update.
     /// @param _purchaseLimit Array of how many bonds per level can be minted every price update.
-    function startDiscountAt(uint256 _startAt, uint256 _endAt, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
+    function startDiscountAt(uint256 _startAt, uint256 _endAt, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external onlyOwner {
         _startDiscount(_startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
-        emit CreateDiscount(discountIndex, _startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit);
+        //emit CreateDiscount(discountIndex, _startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
     /// @notice external onlyOwner implementation of _startDiscount (BondDiscountable) function.
@@ -306,11 +327,11 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _discountRate Discount percentage (out of 100).
     /// @param _updateFrequency Amount in seconds of how often discount price should update.
     /// @param _purchaseLimit Array of how many bonds per level can be minted every price update.
-    function startDiscountIn(uint256 _startIn, uint256 _endIn, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
+    function startDiscountIn(uint256 _startIn, uint256 _endIn, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
 
         _startDiscount(cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
-        emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
+        //emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
     /// @notice external onlyOwner implementation of _startWhitelistedDiscount (BondDiscountable) function.
@@ -321,9 +342,9 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _discountRate Discount percentage (out of 100).
     /// @param _updateFrequency Amount in seconds of how often discount price should update.
     /// @param _purchaseLimit Array of how many bonds per level can be minted every price update.
-    function startWhitelistedDiscountAt(uint256 _startAt, uint256 _endWhitelistAt, uint256 _endAt, bytes32 _merkleRoot, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
+    function startWhitelistedDiscountAt(uint256 _startAt, uint256 _endWhitelistAt, uint256 _endAt, bytes32 _merkleRoot, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external onlyOwner {
         _startWhitelistedDiscount(_startAt, _endWhitelistAt, _endAt, _merkleRoot, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
-        emit CreateDiscount(discountIndex, _startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit);
+        //emit CreateDiscount(discountIndex, _startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
     /// @notice external onlyOwner implementation of _startWhitelistedDiscount (BondDiscountable) function.
@@ -334,11 +355,11 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _discountRate Discount percentage (out of 100).
     /// @param _updateFrequency Amount in seconds of how often discount price should update.
     /// @param _purchaseLimit Array of how many bonds per level can be minted every price update.
-    function startWhitelistedDiscountIn(uint256 _startIn, uint256 _endWhitelistIn, uint256 _endIn, bytes32 _merkleRoot, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
+    function startWhitelistedDiscountIn(uint256 _startIn, uint256 _endWhitelistIn, uint256 _endIn, bytes32 _merkleRoot, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
 
         _startWhitelistedDiscount(cTime + _startIn, cTime + _endWhitelistIn, cTime + _endIn, _merkleRoot, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
-        emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
+        //emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
     /// @notice external onlyOwner implementation of _deactivateDiscount (BondDiscountable) function.
@@ -359,8 +380,9 @@ contract BondManager is Ownable, BondDiscountable {
     /// the array shifting its elements. We disregard unbounded gas cost possible error as the contract
     /// is designed to store a "concise" amount of Bond levels: 10 --> MAX_BOND_LEVELS.
     function addBondLevelAtIndex(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _index, uint256 _price) public onlyOwner returns (bytes4) {
-        require(MAX_BOND_LEVELS > activeBondLevels.length, "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
-        require(_index <= activeBondLevels.length, "fNFT Bond: Index out of bounds.");
+        require(!isDiscountPlanned(), "Bond Manager: Can't add bond level during a discount.");
+        require(MAX_BOND_LEVELS > activeBondLevels.length, "Bond Manager: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
+        require(_index <= activeBondLevels.length, "Bond Manager: Index out of bounds.");
 
         // Calculate unique Bond level hex ID.
         bytes4 levelID = bytes4(keccak256(abi.encodePacked(_name, _weight, block.timestamp, _price)));
@@ -429,10 +451,10 @@ contract BondManager is Ownable, BondDiscountable {
     /// We disregard unbounded gas cost possible error as the contract is designed to store a "concise"
     /// amount of Bond levels: 10. 
     function deactivateBondLevel(bytes4 levelID) public onlyOwner {
-        require(bondLevels[levelID].active == true, "A04");
+        require(!isDiscountPlanned(), "Bond Manager: Can't deactivate bond level during a discount.");
+        require(bondLevels[levelID].active == true, "Bond Manager: Level is already inactive.");
 
         // Dealing with activeBondLevels elements shift 
-
         uint index;
         bool found = false;
 
@@ -466,9 +488,10 @@ contract BondManager is Ownable, BondDiscountable {
     /// We disregard unbounded gas cost possible error as the contract is designed to store a "concise"
     /// amount of Bond levels: 10.
     function activateBondLevel(bytes4 levelID, uint256 _index) public onlyOwner {
-        require(!(activeBondLevels.length >= MAX_BOND_LEVELS), "A05");
-        require(_index <= activeBondLevels.length, "A06");
-        require(bondLevels[levelID].active == false, "A07");
+        require(!isDiscountPlanned(), "Bond Manager: Can't activate bond level during a discount.");
+        require(!(activeBondLevels.length >= MAX_BOND_LEVELS), "Bond Manager: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
+        require(_index <= activeBondLevels.length, "Bond Manager: Index out of bounds.");
+        require(bondLevels[levelID].active == false, "Bond Manager: Level is already active.");
 
         activeBondLevels.push();
 
@@ -505,16 +528,16 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _amount Desired amount ot be minted.
     /// @param _merkleProof merkle proof needed only when a whitelisted discount is active. 
     function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount, bytes32[] calldata _merkleProof) public {
-        require(isSaleActive);
-        require(_amount > 0 && _amount <= 20);
-        require(getBondLevel(levelID).active);
+        require(isSaleActive, "Bond Manager: Bond sale is inactive.");
+        require(_amount > 0 && _amount <= 20, "Bond Manager: Invalid amount to mint.");
+        require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
 
         address sender = _msgSender();
-        require(sender != address(0), "fNFT Bond Manager: Creation to the zero address is prohibited.");
+        require(sender != address(0), "Bond Manager: Creation to the zero address is prohibited.");
 
         // Check if bond level has max supply. 
         if(bondLevels[levelID].maxSupply != 0) {
-            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + _amount);
+            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + _amount, "Bond Manager: Exceeding Bond level maximum supply.");
             bondsSold[levelID] += _amount;
         }
 
@@ -526,19 +549,19 @@ contract BondManager is Ownable, BondDiscountable {
             // Check for whitelist & merkle proof.
             if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
                 bytes32 leaf = keccak256(abi.encodePacked(sender));
-                require(MerkleProof.verify(_merkleProof, discount[discountIndex].merkleRoot, leaf), "You aren't whitelisted!");
+                require(MerkleProof.verify(_merkleProof, discount[discountIndex].merkleRoot, leaf), "Bond Manager: You are not whitelisted.");
             }
 
-            uint8 updateFactor = getDiscountUpdateFactor();
-            uint16 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], _amount));
-            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "C01");
+            uint256 updateFactor = getDiscountUpdateFactor();
+            uint256 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], _amount));
+            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "Bond Manager: Too many bonds minted during this price update period.");
 
             // If there are, it increments the mapping by the amount being minted.
             discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
         }
 
         // Checks that buyer has enough funds to mint the bond.
-        require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
+        require(baseToken.balanceOf(sender) >= bondPrice * _amount, "Bond Manager: Your balance can't cover the mint cost.");
 
         // Transfers funds to trasury contract.
         treasury.bondDeposit(bondPrice * _amount, sender);

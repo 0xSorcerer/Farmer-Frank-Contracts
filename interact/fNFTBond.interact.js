@@ -35,7 +35,9 @@ const init = async () => {
     //console.log(await c.methods.startDiscountIn("1", "101", "60", "10", ["1", "2", "3", "4"]).send({from: address}))
     console.log(await c.methods.startDiscountIn(0, 10000, 60, 100, [2, 2, 2, 2]).send({from: "0xb3304A14F01Cb5C22E6f5E9fd55b6b6c826e8cc7"}))
 
-    //console.log(web3.eth.abi.encodeFunctionSignature('harvest()'))
+    console.log(web3.eth.abi.encodeWithSignature('mintBonds'))
+
+    web3.eth.abi.en
 }
 
 init()

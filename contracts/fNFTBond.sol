@@ -93,23 +93,12 @@ contract fNFTBond is ERC721, Ownable {
     /// @notice Modifier ensuring that a bond with ID: _bondID exists.
     /// @notice Unique fNFT Bond ID. 
     modifier onlyIfExists(uint256 _bondID) {
-        require(_exists(_bondID), "A10");
+        require(_exists(_bondID), "Bond Manager: Bond ID does not exist.");
         _;
     }
 
-    /// @notice Used to parse bytes4 levelID to string in order to generate tokenURI. 
-    /// @param buffer levelID bytes buffer.
-    function iToHex(bytes memory buffer) internal pure returns (string memory) {
-        bytes memory converted = new bytes(buffer.length * 2);
-
-        bytes memory _base = "0123456789abcdef";
-
-        for (uint256 i = 0; i < buffer.length; i++) {
-            converted[i * 2] = _base[uint8(buffer[i]) / _base.length];
-            converted[i * 2 + 1] = _base[uint8(buffer[i]) % _base.length];
-        }
-
-        return string(abi.encodePacked("0x", converted));
+    function getBondManager() external view returns (address) {
+        return address(bondManager);
     }
 
     /// @notice Returns bond at _bondID.
@@ -136,6 +125,21 @@ contract fNFTBond is ERC721, Ownable {
     function tokenURI(uint256 _bondID) public view virtual override onlyIfExists(_bondID) returns (string memory) {
         string memory base = baseURI();
         return string(abi.encodePacked(base, "/", iToHex(abi.encodePacked(bonds[_bondID].levelID))));
+    }
+
+    /// @notice Used to parse bytes4 levelID to string in order to generate tokenURI. 
+    /// @param buffer levelID bytes buffer.
+    function iToHex(bytes memory buffer) internal pure returns (string memory) {
+        bytes memory converted = new bytes(buffer.length * 2);
+
+        bytes memory _base = "0123456789abcdef";
+
+        for (uint256 i = 0; i < buffer.length; i++) {
+            converted[i * 2] = _base[uint8(buffer[i]) / _base.length];
+            converted[i * 2 + 1] = _base[uint8(buffer[i]) % _base.length];
+        }
+
+        return string(abi.encodePacked("0x", converted));
     }
 
     /// @notice Connect fNFTBond contract (this) to its manager.

@@ -25,26 +25,32 @@ interface IVeJoeStaking {
     function withdraw(uint256 _amount) external;
 }
 
-//Add withdraws
-
-/// @notice Farmer Frank Treasury.
-/// Manages staking / unstaking of sJOE and veJOE + adding liquidity to BMCJ.
-/// 
-
-//CONVERT SJOE STAKING REWARDS TO JOE
+/// @title Farmer Frank Treasury.
+/// @author @0xSorcerer
 
 contract FrankTreasury is Ownable {
 
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
+    /// @notice Strategy information.
     struct Strategy {
-        uint24[] DISTRIBUTION_BONDED_JOE; //
-        uint24[] DISTRIBUTION_REINVESTMENTS;
-        uint24 PROPORTION_REINVESTMENTS;
+        // 2 element array containing proportions (total = 100_000) dictating how bonded JOE will be utilized.
+        //      DISTRIBUTION_BONDED_JOE[0] = Proportion of JOE staked to sJOE.
+        //      DISTRIBUTION_BONDED_JOE[1] = Proportion of JOE staked to veJOE.
+        uint256[] DISTRIBUTION_BONDED_JOE; 
+        // 3 element array containing proportions (total = 100_000) dictating how reinvested revenue will be utilized.
+        //      DISTRIBUTION_REINVESTMENTS[0] = Proportion of JOE staked to sJOE.
+        //      DISTRIBUTION_REINVESTMENTS[1] = Proportion of JOE staked to veJOE.
+        //      DISTRIBUTION_REINVESTMENTS[2] = Proportion of JOE farmed in liquidity.
+        uint256[] DISTRIBUTION_REINVESTMENTS;
+        // Proportion (total = 100_000) of revenue reinvested within the protocol.
+        uint256 PROPORTION_REINVESTMENTS;
+        // Liquidity pool to farm. 
         address LIQUIDITY_POOL;
     }
 
+    /// @notice Contract interfaces
     //IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
     IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0xf09597ef3cEebd18905ba573E48ec9Ad3A160096);
     IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0xCF6E93c729f07019819Bc67C7ebadda4FaC3b233);
@@ -55,25 +61,43 @@ contract FrankTreasury is Ownable {
 
     address private constant teamAddress = 0xE6461Da23098d2420Ce9A35b329FA82db0919c30;
     address private constant investorAddress = 0xE6461Da23098d2420Ce9A35b329FA82db0919c30;
+    
     uint256 private constant FEE_PRECISION = 100_000;
-
     uint256 private internalFee;
 
-    uint256 public currentRevenue;
-    uint256 public totalRevenue;
+    /// @dev Revenue that gets distributed when calling distribute().
+    uint256 private currentRevenue;
+    /// @dev Total revenue that has been distributed through distribute().
+    uint256 private totalRevenue;
 
-    uint256 DISTRIBUTE_THRESHOLD = 5_000 * 10 ** 18; 
+    /// @dev Minimum amount of currentRevenue required to distribute rewards.
+    uint256 private DISTRIBUTE_THRESHOLD = 5_000 * 10 ** 18; 
 
-    uint256[] activePIDs;
-    mapping(uint256 => bool) isPIDActive;
+    /// @dev Storing BMCJ pools utilized Treasury is farming in.
+    uint256[] private activePIDs;
+    mapping(uint256 => bool) private isPIDActive;
 
+    /// @dev Slippage amount used when swapping tokens.
     uint256 private slippage = 960;
     
-    Strategy public strategy;
+    /// @dev Strategy object.
+    Strategy private strategy;
 
     constructor() {
         setFee(2000);
-        setStrategy([uint24(50000),50000], [uint24(45000),45000,10000], 50000, 0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0);
+        setStrategy([uint256(50000),50000], [uint256(45000),45000,10000], 50000, 0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0);
+    }
+
+    function getCurrentRevenue() public view returns (uint256) {
+        return currentRevenue;
+    }
+
+    function getTotalRevenue() public view returns (uint256) {
+        return totalRevenue;
+    }
+
+    function getStrategy() public view returns (Strategy memory) {
+        return strategy;
     }
 
     /// @notice Change the bond manager address.
@@ -95,16 +119,18 @@ contract FrankTreasury is Ownable {
         DISTRIBUTE_THRESHOLD = _threshold;
     }
 
+    /// @notice Change slippage variable.
+    /// @param _slippage New slippage amount.
     function setSlippage(uint256 _slippage) external onlyOwner {
         slippage = _slippage;
     }
 
     /// @notice Set the Treasury's strategy.
-    /// @param _DISTRIBUTION_BONDED_JOE 2 value array storing 1. proportion of BONDED JOE staked to sJOE 2. proportion staked to veJOE
-    /// @param _DISTRIBUTION_REINVESTMENTS 3 value array storing 1. proportion of REINVESTED REVENUE staked to sJOE 2. proportion staked to veJOE 3. proportion farmed in BMCJ
+    /// @param _DISTRIBUTION_BONDED_JOE 2 value array storing 1. proportion of BONDED JOE staked to sJOE 2. proportion staked to veJOE.
+    /// @param _DISTRIBUTION_REINVESTMENTS 3 value array storing 1. proportion of REINVESTED REVENUE staked to sJOE 2. proportion staked to veJOE 3. proportion farmed in BMCJ.
     /// @param _PROPORTION_REINVESTMENTS Proportion of REVENUE reinvested within the protocol.
-    /// @param _LIQUIDITY_POOL Liquidity pool currently farmed on BMCJ 
-    function setStrategy(uint24[2] memory _DISTRIBUTION_BONDED_JOE, uint24[3] memory _DISTRIBUTION_REINVESTMENTS, uint24 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL) public onlyOwner {
+    /// @param _LIQUIDITY_POOL Liquidity pool currently farmed on BMCJ.
+    function setStrategy(uint256[2] memory _DISTRIBUTION_BONDED_JOE, uint256[3] memory _DISTRIBUTION_REINVESTMENTS, uint256 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL) public onlyOwner {
         require(_DISTRIBUTION_BONDED_JOE.length == 2);
         require(_DISTRIBUTION_BONDED_JOE[0] + _DISTRIBUTION_BONDED_JOE[1] == 100_000);
         strategy.DISTRIBUTION_BONDED_JOE = _DISTRIBUTION_BONDED_JOE;
@@ -119,18 +145,11 @@ contract FrankTreasury is Ownable {
         strategy.LIQUIDITY_POOL = _LIQUIDITY_POOL;
     }
 
-    event Test(
-        uint256 currentRevenue,
-        uint256 feeAmount,
-        uint256 reinvestedAmount,
-        uint256 rewardedAmount
-    );
-
     /// @notice Distribute revenue to BondManager (where bond holders can later claim rewards and shares).
     /// @dev Anyone can call this function, if the current revenue is above a certain threshold (DISTRIBUTE_THRESHOLD). 
     function distribute() external {
         //harvest();
-        //require(currentRevenue >= DISTRIBUTE_THRESHOLD);
+        //require(currentRevenue >= DISTRIBUTE_THRESHOLD, "Revenue can't be distributed yet.");
 
         uint256 _currentRevenue = currentRevenue;
         uint256 _feeAmount = SafeMath.div(SafeMath.mul(_currentRevenue, internalFee), FEE_PRECISION);
@@ -150,8 +169,6 @@ contract FrankTreasury is Ownable {
 
         totalRevenue = SafeMath.add(totalRevenue, currentRevenue);
         currentRevenue = 0;
-
-        emit Test(_currentRevenue, _feeAmount, _reinvestedAmount, _rewardedAmount);
     }
 
     /// @notice Internal function used to reinvest part of revenue when calling distribute().
@@ -169,7 +186,8 @@ contract FrankTreasury is Ownable {
     }
 
     /// @notice Function called by BondManager contract everytime a bond is minted.
-    /// @param _amount Amount of tokens deposited to the treasury,
+    /// @param _amount Amount of tokens deposited to the treasury.
+    /// @param _sender Address of bond minter.
     function bondDeposit(uint256 _amount, address _sender) external {
         require(_msgSender() == address(BondManager));
 
@@ -186,8 +204,6 @@ contract FrankTreasury is Ownable {
 
 
     /// @notice Convert treasury JOE to LP tokens and farms them on BMCJ.
-    /// @param _amount Amount of JOE tokens to farm.
-    /// @param _pool Boosted pool address.
     /// @param _amount Amount of JOE tokens to farm.
     /// @param _pool Boosted pool address.
     /// @dev Only JOE pools are supported, in order to keep partial exposure to the JOE token. 
@@ -243,33 +259,10 @@ contract FrankTreasury is Ownable {
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
     }
 
-    /// @notice Convert treasury JOE to LP tokens and farms them on BMCJ.
-    /// @param _amount Amount of JOE tokens to farm.
-    /// @param _pool Boosted pool address.
-    /// @param _amount Amount of JOE tokens to farm.
-    /// @param _pool Boosted pool address.
-    /// @dev External onlyOwner implementation of the _addAndFarmLiquidity function. 
-    /// @dev Used to reallocate protocol owned liquidity. First liquidity from a pool is removed with removeLiquidity() and then it is migrated to another pool
-    /// through this function. 
-    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256 excess) {
-        excess = _addAndFarmLiquidity(_amount, _pool);
-    }
-
-    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
-        return _removeLiquidity(_amount, _pool);
-    }
-
-    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
-        uint256 JOEAmount = _removeLiquidity(_amount, _previousPool);
-        uint256 excess = _addAndFarmLiquidity(JOEAmount, _newPool);
-
-        SJoeStaking.deposit(excess);
-    }
-
     /// @notice Remove liquidity from Boosted pool and convert assets to JOE.
     /// @param _amount Amount of LP tokens to remove from liquidity.
     /// @param _pool Boosted pool address.
-    function _removeLiquidity(uint256 _amount, address _pool) internal returns (uint256) {
+    function _removeLiquidity(uint256 _amount, address _pool) private returns (uint256) {
         uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
         require(liquidityBalance >= _amount);
 /*
@@ -318,7 +311,34 @@ contract FrankTreasury is Ownable {
         return JOE.balanceOf(address(this)) - balanceAfter;
     }
 
-    /// @notice Harvest rewards from sJOE and BMCJ farms
+    /// @notice Public onlyOwner implementation of _addAndFarmLiquidity function.
+    /// @param _amount Amount of JOE tokens to farm.
+    /// @param _pool Boosted pool address.
+    /// @dev Used to reallocate protocol owned liquidity. First liquidity from a pool is removed with removeLiquidity() and then it is migrated to another pool
+    /// through this function. 
+    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256 excess) {
+        excess = _addAndFarmLiquidity(_amount, _pool);
+    }
+
+    /// @notice Public onlyOwner implementation of _removeLiquidity function.
+    /// @param _amount Amount of LP tokens to remove.
+    /// @param _pool Boosted pool address.
+    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
+        return _removeLiquidity(_amount, _pool);
+    }
+
+    /// @notice Function used to migrate liquidity from one pool to another.
+    /// @param _previousPool Pool from which liquidity must be removed.
+    /// @param _newPool Pool from which liquidity must be added.
+    /// @param _amount Amount of LP (_previousPool) tokens that must be migrated.
+    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
+        uint256 JOEAmount = _removeLiquidity(_amount, _previousPool);
+        uint256 excess = _addAndFarmLiquidity(JOEAmount, _newPool);
+
+        SJoeStaking.deposit(excess);
+    }
+
+    /// @notice Harvest rewards from sJOE, BMCJ farms and claim veJOE tokens.
     /// @dev Anyone can call this function
     function harvestAll() public { 
         uint256 balanceBefore = JOE.balanceOf(address(this));
@@ -333,10 +353,12 @@ contract FrankTreasury is Ownable {
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
     }
 
-    /// @notice Harvest rewards from sJOE and harvest veJOE. 
+    /// @notice claims rewards from sJOE and claims veJOE. 
     function claimJoeFromStaking() private {
         IStableJoeStaking(SJoeStaking).withdraw(0);
 
+        // Converts USDC rewards to JOE
+        /*
         address[] memory path = new address[](2);
         path[0] = address(USDC);
         path[1] = address(JOE);
@@ -345,19 +367,14 @@ contract FrankTreasury is Ownable {
 
         USDC.approve(address(TraderJoeRouter), USDCBalance);
         TraderJoeRouter.swapExactTokensForTokens(USDCBalance, (TraderJoeRouter.getAmountsOut(USDCBalance, path)[1]) * slippage / 1000, path, address(this), (block.timestamp + 1000));
-
+        */
         IVeJoeStaking(VeJoeStaking).claim();
-    }
-
-    function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
-        (bool success, bytes memory result) = target.call{value: value}(data);
-        return (success, result);
     }
 
     /// @notice Internal function to divide an amount into different proportions.
     /// @param amount_ Amount to divide.
     /// @param _proportions Array of the different proportions in which to divide amount_
-    function proportionDivide(uint256 amount_, uint24[] memory _proportions) private pure returns (uint256[] memory _amounts) {
+    function proportionDivide(uint256 amount_, uint256[] memory _proportions) private pure returns (uint256[] memory _amounts) {
         uint256 amountTotal;
         uint256 proportionTotal;
         _amounts = new uint256[](_proportions.length);
@@ -395,8 +412,17 @@ contract FrankTreasury is Ownable {
     }
     */
 
+    /// @notice Emergency withdraw function.
+    /// @param _token Token to withdraw.
+    /// @param _receiver Token receiver.
     function withdraw(address _token, uint256 _amount, address _receiver) external onlyOwner {
         IERC20(_token).transfer(_receiver, _amount);
+    }
+
+    /// @notice Open-ended execute function.
+    function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
+        (bool success, bytes memory result) = target.call{value: value}(data);
+        return (success, result);
     }
 
 }
