@@ -12,7 +12,6 @@ import "./libraries/SafeMath.sol";
 import "./interfaces/IFrankTreasury.sol";
 import "./other/MerkleProof.sol";
 
-
 contract BondDiscountable {
 
     ///@dev Discount index. Used to map the bonds sold.
@@ -40,7 +39,7 @@ contract BondDiscountable {
 
     /// @notice Discounts mapping.
     /// @dev discount[discountIndex]
-    mapping(uint16 => Discount) public discount;
+    mapping(uint16 => Discount) internal discount;
 
     /// @notice Create a discount
     /// @param _startTime Timestamp at which discount will start 
@@ -130,13 +129,12 @@ contract BondDiscountable {
     }
 }
 
-// Whitelist
-
 contract BondManager is Ownable, BondDiscountable {
 
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
+    /// @notice Info of each Bond level. 
     struct BondLevel {
         // Unique fNFT Bond level hex ID.
         bytes4 levelID;
@@ -144,10 +142,9 @@ contract BondManager is Ownable, BondDiscountable {
         bool active;
         // Bond weight multipliers. Used to calculate weighted shares.
         // Weight is percentage (out of 100), hence weight = 100 would mean 1x (base multiplier).
-        // Hence, WEIGHT_PRECISION = 100. 
         uint16 weight;
-        // Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
-        uint64 sellableAmount;
+        // Maximum supply of bonds of that level. If set to 0, the maximum supply is unlimited.
+        uint64 maxSupply;
         // Bond level name used on Farmer Frank's UI.
         string name;
         // Bond price.
@@ -160,6 +157,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Token used to mint Bonds and issue rewards.
     IERC20 public baseToken;
 
+    /// @notice Farmer Frank Treasury interface. 
     IFrankTreasury public treasury;
 
     /// @notice Total number of unweighted shares.
@@ -167,32 +165,38 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Total number of weighted shares.
     uint256 public totalWeightedShares;
 
-    /// @notice Accumulated rewards per weigted shares. Used to calculate rewardDebt.
+    /// @notice Accumulated rewards per weigted shares. Used to calculate claim amount & rewardDebt.
     uint256 public accRewardsPerWS = 0;
-    /// @notice Accumulated shares per unweighted shares. Used to calculate shareDebt.
+    /// @notice Accumulated shares per unweighted shares. Used to calculate claim amount & shareDebt.
     uint256 public accSharesPerUS = 0;
 
     /// @dev Precision constants.
     uint256 private GLOBAL_PRECISION = 10**18;
     uint256 private WEIGHT_PRECISION = 100;
 
-    /// @notice Whether bonds can be currently minted.
+    /// @notice Whether bond sale is currently active.
     bool public isSaleActive = true;
 
-    //------------
-
+    /// @dev Maximum amount of Bond levels that can be concurrently active.
     uint16 private constant MAX_BOND_LEVELS = 10;
 
+    /// @dev Array storing all active Bond levels.
     bytes4[] private activeBondLevels;
 
+    /// @dev Mapping storing all Bond levels, both active and inactive.
+    /// @dev Inactive bondLevels must be stored in order to retreive data such as weight for bonds of that level,
+    /// even if it can't currently be minted. 
     mapping(bytes4 => BondLevel) private bondLevels;
 
+    /// @dev Mapping storing how many bonds have been minted per level.
+    /// @dev Used to ensure a bond's level maximum supply is not being exceeded.
+    /// @dev Used only for bond levels which have a fixed supply. 
     mapping(bytes4 => uint256) private bondsSold;
 
+    /// @dev User XP which will be utilized in a future update of the protocol.
+    /// @dev Each bond confers its holder an amount of experience points. Upon bond transfer, its XP will be
+    /// transfered to the new bond holder. 
     mapping(address => uint256) private userXP;
-
-    //------------
-
 
     event CreateDiscount (
         uint16 indexed discountIndex,
@@ -221,18 +225,67 @@ contract BondManager is Ownable, BondDiscountable {
 
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
-
         setTreasury(_treasury);
 
+        // Create initial bond levels. 
         addBondLevelAtIndex("Level I", 100, 0, activeBondLevels.length, SafeMath.mul(10, GLOBAL_PRECISION));
         addBondLevelAtIndex("Level II", 105, 0, activeBondLevels.length, SafeMath.mul(100, GLOBAL_PRECISION));
         addBondLevelAtIndex("Level III", 110, 0, activeBondLevels.length, SafeMath.mul(1000, GLOBAL_PRECISION));
         addBondLevelAtIndex("Level IV", 115, 0, activeBondLevels.length, SafeMath.mul(5000, GLOBAL_PRECISION));
     }
 
+    /// @notice Returns an array of all hex IDs of active Bond levels.
+    function getActiveBondLevels() public view returns (bytes4[] memory) {
+        return activeBondLevels;
+    }
+
+    /// @notice Returns Bond level.
+    /// @param _levelID Unique fNFT Bond level hex ID.
+    function getBondLevel(bytes4 _levelID) public view returns (BondLevel memory) {
+       return bondLevels[_levelID];
+    }
+
+    /// @notice Returns a user's XP balance.
+    function getUserXP(address _user) external view returns (uint256) {
+        return userXP[_user];
+    }
+
+    /// @notice Get the price for a particular Bond level.
+    /// @param levelID Bond level hex ID.
+    /// @return uint256 Bond price.
+    /// @return bool Whether a discont is currently active.
+    function getPrice(bytes4 levelID) public view returns (uint256, bool) {
+        uint256 price = getBondLevel(levelID).price;
+
+        if(isDiscountActive()) {
+            // Calculates total number of price updates during the discount time frame.
+            uint256 totalUpdates = (discount[discountIndex].endTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency;
+            // Calculates the price when discount starts: the lowest price. Simply, the base price discounted by the discount rate.
+            uint256 discountStartPrice = price - ((price * discount[discountIndex].discountRate) / 100);
+            // Calculates how much price will increase at every price update.
+            uint256 updateIncrement = (price - discountStartPrice) / totalUpdates;
+            // Finally calcualtes the price using the above variables.
+            return (discountStartPrice + (updateIncrement * getDiscountUpdateFactor()), true);
+        } else {
+            return (price, false);
+        }
+    }
+
+    /// @notice Get claimable amount of shares and rewards for a particular Bond.
+    /// @param _bondID Unique fNFT Bond uint ID
+    /// @return claimableShares Amount of shares that can be claimed by the bond holder for _bondID. 
+    /// @return claimableRewards Amount of token rewards that can be claimed by the bond holder for _bondID. 
+    function getClaimableAmounts(uint256 _bondID) public view returns (uint256 claimableShares, uint256 claimableRewards) {
+        IFNFTBond.Bond memory _bond = bond.getBond(_bondID);
+
+        claimableShares = (_bond.unweightedShares * accSharesPerUS / GLOBAL_PRECISION) - _bond.shareDebt;
+        claimableRewards = (_bond.weightedShares * accRewardsPerWS / GLOBAL_PRECISION) - _bond.rewardDebt;
+    }
+
+    /// @notice Set the treasury contract interface.
+    /// @param _treasury FrankTreasury contract address.
     function setTreasury(address _treasury) public onlyOwner {
         require(_treasury != address(0));
-
         treasury = IFrankTreasury(_treasury);
     }
 
@@ -260,11 +313,27 @@ contract BondManager is Ownable, BondDiscountable {
         emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
+    /// @notice external onlyOwner implementation of _startWhitelistedDiscount (BondDiscountable) function.
+    /// @param _startAt Timestamp at which the discount will start.
+    /// @param _endWhitelistAt Timestamp at which whitelist will no longer be required to participate in the discount.
+    /// @param _endAt Timestamp at which the discount will end.
+    /// @param _merkleRoot Root of Merkle Tree utilized to validate whitelist.
+    /// @param _discountRate Discount percentage (out of 100).
+    /// @param _updateFrequency Amount in seconds of how often discount price should update.
+    /// @param _purchaseLimit Array of how many bonds per level can be minted every price update.
     function startWhitelistedDiscountAt(uint256 _startAt, uint256 _endWhitelistAt, uint256 _endAt, bytes32 _merkleRoot, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
         _startWhitelistedDiscount(_startAt, _endWhitelistAt, _endAt, _merkleRoot, _discountRate, _updateFrequency, _purchaseLimit, getActiveBondLevels());
         emit CreateDiscount(discountIndex, _startAt, _endAt, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
+    /// @notice external onlyOwner implementation of _startWhitelistedDiscount (BondDiscountable) function.
+    /// @param _startIn Amount of seconds until the discount start.
+    /// @param _endWhitelistIn Amount of seconds until whitelist will no longer be required to participate in the discount.
+    /// @param _endIn Amount of seconds until the discount end.
+    /// @param _merkleRoot Root of Merkle Tree utilized to validate whitelist.
+    /// @param _discountRate Discount percentage (out of 100).
+    /// @param _updateFrequency Amount in seconds of how often discount price should update.
+    /// @param _purchaseLimit Array of how many bonds per level can be minted every price update.
     function startWhitelistedDiscountIn(uint256 _startIn, uint256 _endWhitelistIn, uint256 _endIn, bytes32 _merkleRoot, uint16 _discountRate, uint64 _updateFrequency, uint8[] memory _purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
 
@@ -272,21 +341,24 @@ contract BondManager is Ownable, BondDiscountable {
         emit CreateDiscount(discountIndex, cTime + _startIn, cTime + _endIn, _discountRate, _updateFrequency, _purchaseLimit);
     }
 
-    /// @notice external onlyOwner implementation of _deactivateDiscount (BondDiscountable) function
+    /// @notice external onlyOwner implementation of _deactivateDiscount (BondDiscountable) function.
     function deactivateDiscount() external onlyOwner {
         _deactivateDiscount();
     }
 
     /// @notice Create a Bond level and adds it at a particular index of activeBondLevels array.
     /// @param _name Bond level name. Showed on Farmer Frank's UI.
-    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
+    /// @param _maxSupply Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
     /// @param _index Index of activeBondLevels array where the Bond level will be inserted.
+    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
+    /// @dev Index and order of activeBondLevels array is crucial as it dictates hierarchy of display
+    /// on Farmer Frank's UI.
     /// @dev If the Bond level must be added at the end of the array --> _index = activeBondLevels.length.
     /// @dev When adding a bond level whose index isn't activeBondLevels.length, the contract loops through
     /// the array shifting its elements. We disregard unbounded gas cost possible error as the contract
-    /// is designed to store a "concise" amount of Bond levels: 10.
-    function addBondLevelAtIndex(string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _index, uint256 _price) public onlyOwner returns (bytes4) {
+    /// is designed to store a "concise" amount of Bond levels: 10 --> MAX_BOND_LEVELS.
+    function addBondLevelAtIndex(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _index, uint256 _price) public onlyOwner returns (bytes4) {
         require(MAX_BOND_LEVELS > activeBondLevels.length, "fNFT Bond: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(_index <= activeBondLevels.length, "fNFT Bond: Index out of bounds.");
 
@@ -297,7 +369,7 @@ contract BondManager is Ownable, BondDiscountable {
             levelID: levelID,
             active: true,
             weight: _weight,
-            sellableAmount: _sellableAmount,
+            maxSupply: _maxSupply,
             name: _name,
             price: _price
         });
@@ -322,26 +394,27 @@ contract BondManager is Ownable, BondDiscountable {
         return(levelID);
     }
 
-    /// @notice external onlyOwner implementation of _addBondLevelAtIndex (fNFT Bond) function.
+    /// @notice Create a Bond level and adds it at a particular index of activeBondLevels array.
     /// @param _name Bond level name. Showed on Farmer Frank's UI.
-    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
     /// @param _weight Weight percentage of Bond level (>= 100).
-    /// @dev Doesn't take _index as a parameter and appends the Bond level at the end of the active levels array.
-    function addBondLevel(string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _price) external onlyOwner returns (bytes4) {
-        return addBondLevelAtIndex(_name, _weight, _sellableAmount, activeBondLevels.length, _price);
+    /// @param _maxSupply Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
+    /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
+    function addBondLevel(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _price) external onlyOwner returns (bytes4) {
+        return addBondLevelAtIndex(_name, _weight, _maxSupply, activeBondLevels.length, _price);
     }
 
     /// @notice Change a Bond level.
     /// @param levelID Bond level hex ID being changed.
     /// @param _name New Bond level name.
-    /// @param _price New Bond price.
     /// @param _weight New Weight percentage of Bond level (>= 100).
-    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _weight, uint32 _sellableAmount, uint256 _price) external onlyOwner {
+    /// @param _maxSupply Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
+    /// @param _price New Bond price.
+    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _price) external onlyOwner {
         bondLevels[levelID] = BondLevel({
             levelID: levelID,
             active: true,
             weight: _weight,
-            sellableAmount: _sellableAmount,
+            maxSupply: _maxSupply,
             name: _name,
             price: _price
         });
@@ -351,8 +424,7 @@ contract BondManager is Ownable, BondDiscountable {
 
     /// @notice Deactivate a Bond level.
     /// @param levelID Bond level hex ID.
-    /// @dev Bond being deactivated is removed from activeBondLevels array and its active parameter
-    /// is set to false.
+    /// @dev Bond being deactivated is removed from activeBondLevels array and its active parameter is set to false.
     /// @dev When removing a bond level, the contract loops through the activeBondLevels array shifting its elements.
     /// We disregard unbounded gas cost possible error as the contract is designed to store a "concise"
     /// amount of Bond levels: 10. 
@@ -422,18 +494,16 @@ contract BondManager is Ownable, BondDiscountable {
         activateBondLevel(levelID, _index);
     }
 
-    /// @notice external onlyOnwer implementation of setBaseURI (fNFT Bond function)
-    /// @param baseURI_ string to set as baseURI
-    function setBaseURI(string memory baseURI_) external onlyOwner {
-        return bond.setBaseURI(baseURI_);
-    }
-
     /// @notice Toggle fNFT Bond sale
     function toggleSale() external onlyOwner {
         isSaleActive = !isSaleActive;
         emit Set(isSaleActive);
     }
 
+    /// @notice Function the user calls to mint (create) 1 or more fNFT Bonds.
+    /// @param levelID level hex ID.
+    /// @param _amount Desired amount ot be minted.
+    /// @param _merkleProof merkle proof needed only when a whitelisted discount is active. 
     function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount, bytes32[] calldata _merkleProof) public {
         require(isSaleActive);
         require(_amount > 0 && _amount <= 20);
@@ -442,8 +512,9 @@ contract BondManager is Ownable, BondDiscountable {
         address sender = _msgSender();
         require(sender != address(0), "fNFT Bond Manager: Creation to the zero address is prohibited.");
 
-        if(bondLevels[levelID].sellableAmount != 0) {
-            require(bondLevels[levelID].sellableAmount >= bondsSold[levelID] + _amount);
+        // Check if bond level has max supply. 
+        if(bondLevels[levelID].maxSupply != 0) {
+            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + _amount);
             bondsSold[levelID] += _amount;
         }
 
@@ -451,7 +522,8 @@ contract BondManager is Ownable, BondDiscountable {
         (uint256 bondPrice, bool discountActive) = getPrice(levelID);
 
         // If there is a discount, contract must check that there are enough Bonds left for that discount updateFactor period.
-        if(discountActive) {
+        if(discountActive) { 
+            // Check for whitelist & merkle proof.
             if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
                 bytes32 leaf = keccak256(abi.encodePacked(sender));
                 require(MerkleProof.verify(_merkleProof, discount[discountIndex].merkleRoot, leaf), "You aren't whitelisted!");
@@ -466,7 +538,7 @@ contract BondManager is Ownable, BondDiscountable {
         }
 
         // Checks that buyer has enough funds to mint the bond.
-        //require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
+        require(baseToken.balanceOf(sender) >= bondPrice * _amount, "C02");
 
         // Transfers funds to trasury contract.
         treasury.bondDeposit(bondPrice * _amount, sender);
@@ -486,17 +558,17 @@ contract BondManager is Ownable, BondDiscountable {
         userXP[sender] += bondLevels[levelID].price * _amount;
 
         // Call fNFT mintBond function.
-        //bond.mintBonds(sender, levelID, uint8(_amount), bondPrice);
         bond.mintBonds(sender, levelID, uint8(_amount), weightedShares, unweightedShares);
     }
 
-    /// @notice Deposit rewards and shares for users to be claimed to this contract.
+    /// @notice Deposit rewards and shares for users to be claimed from this contract.
     /// @param _issuedRewards Amount of rewards to be deposited to the contract claimable by users.
     /// @param _issuedShares Amount of new shares claimable by users.
+    /// @dev Can only be called by treasury.
     function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external {
         require(_msgSender() == address(treasury));
 
-        baseToken.transferFrom(_msgSender(), address(this), _issuedRewards);
+        baseToken.transferFrom(address(treasury), address(this), _issuedRewards);
 
         // Increase accumulated shares and rewards.
         accSharesPerUS += _issuedShares * GLOBAL_PRECISION / totalUnweightedShares;
@@ -516,7 +588,7 @@ contract BondManager is Ownable, BondDiscountable {
         totalUnweightedShares += claimableShares;
         totalWeightedShares += claimableShares * getBondLevel(bond.getBond(_bondID).levelID).weight / WEIGHT_PRECISION;
 
-        // Call fNFT claim function which increments shares and debt.
+        // Call fNFT claim function which increments shares and debt for _bondID.
         bond.claim(sender, _bondID, claimableRewards, claimableShares);
 
         // Send rewards to user.
@@ -526,8 +598,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Public implementation of _claim function.
     /// @param _bondID Unique fNFT Bond uint ID.
     function claim(uint256 _bondID) public {
-        address sender = _msgSender();
-        _claim(_bondID, sender);
+        _claim(_bondID, _msgSender());
     }
 
     /// @notice Claim rewards and shares for all Bonds owned by the sender.
@@ -545,6 +616,7 @@ contract BondManager is Ownable, BondDiscountable {
     }
 
     /// @notice Claim rewards and shares for Bonds in an array.
+    /// @param _bondIDs Array of bondIDs that will claim rewards.
     /// @dev If the sender owns many Bonds, calling multiple transactions is necessary.
     /// dAPP will query off-chain (requiring 0 gas) all Bonds IDs owned by the sender.
     /// It will divide the array in smaller chunks and will call this function multiple
@@ -555,57 +627,22 @@ contract BondManager is Ownable, BondDiscountable {
         }
     }
 
-    /// @notice Get the price for a particular Bond level.
-    /// @param levelID Bond level hex ID
-    function getPrice(bytes4 levelID) public view returns (uint256, bool) {
-        // Multiplies base price by GLOBAL_PRECISION (token decimals)
-        
-        uint256 price = getBondLevel(levelID).price;
-        if(isDiscountActive()) {
-            // Calculates total number of price updates during the discount time frame.
-            uint256 totalUpdates = (discount[discountIndex].endTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency;
-            // Calculates the price when discount starts: the lowest price. Simply, the base price discounted by the discount rate.
-            uint256 discountStartPrice = price - ((price * discount[discountIndex].discountRate) / 100);
-            // Calculates how much price will increase at every price update.
-            uint256 updateIncrement = (price - discountStartPrice) / totalUpdates;
-            // Finally calcualtes the price using the above variables.
-            return (discountStartPrice + (updateIncrement * getDiscountUpdateFactor()), true);
-        } else {
-            return (price, false);
-        }
-        
-    }
-
-    /// @notice Get claimable amount of shares and rewards for a particular Bond.
-    /// @param _bondID Unique fNFT Bond uint ID
-    function getClaimableAmounts(uint256 _bondID) public view returns (uint256 claimableShares, uint256 claimableRewards) {
-        IFNFTBond.Bond memory _bond = bond.getBond(_bondID);
-
-        claimableShares = (_bond.unweightedShares * accSharesPerUS / GLOBAL_PRECISION) - _bond.shareDebt;
-        claimableRewards = (_bond.weightedShares * accRewardsPerWS / GLOBAL_PRECISION) - _bond.rewardDebt;
-    }
-
+    /// @notice Links this bond manager to the fNFT bond at deployment. 
     function linkBondManager() external onlyOwner {
         bond._linkBondManager(address(this));
     }
 
-    /// @notice Returns an array of all hex IDs of active Bond levels.
-    function getActiveBondLevels() public view returns (bytes4[] memory) {
-        return activeBondLevels;
-    }
-
-    /// @notice Returns Bond level.
-    /// @param _levelID Unique fNFT Bond level hex ID.
-    function getBondLevel(bytes4 _levelID) public view returns (BondLevel memory) {
-       return bondLevels[_levelID];
-    }
-
+    /// @notice Sets XP balance for a current user.
+    /// @param _amount User XP balance.
+    /// @param _user User address.
     function setUserXP(uint256 _amount, address _user) external {
         require(_msgSender() == address(bond));
         userXP[_user] = _amount;
     }
 
-    function getUserXP(address _user) external view returns (uint256) {
-        return userXP[_user];
+    /// @notice external onlyOnwer implementation of setBaseURI (fNFT Bond function)
+    /// @param baseURI_ string to set as baseURI
+    function setBaseURI(string memory baseURI_) external onlyOwner {
+        return bond.setBaseURI(baseURI_);
     }
 }
