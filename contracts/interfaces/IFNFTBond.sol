@@ -15,20 +15,19 @@ interface IFNFTBond {
         uint256 shareDebt;
     }
 
-    function getBondManager() external view returns (address);
+    function BondManager() external view returns (address);
 
-    function getBond(uint256 _bondID) external view returns (Bond memory);
+    function getBond(uint256 bondID) external view returns (Bond memory);
 
-    function getBondsIDsOf(address _account) external view returns (uint256[] memory);
+    function getBondsIDsOf(address user) external view returns (uint256[] memory);
 
-    function tokenURI(uint256 _bondID) external view returns (string memory);
+    function tokenURI(uint256 bondID) external view returns (string memory);
 
-    function _linkBondManager(address _bondManager) external;
+    function linkBondManager(address bondManager) external;
 
-    function mintBonds(address _account, bytes4 levelID, uint256 _amount, uint256 _weightedShares, uint256 _unweightedShares) external;
+    function mintBonds(address user, bytes4 levelID, uint256 amount, uint256 weightedShares, uint256 unweightedShares) external;
 
-    function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external;
+    function claim(address user, uint256 bondID, uint256 issuedRewards, uint256 issuedShares) external;
 
-    function setBaseURI(string memory baseURI_ ) external;
-
+    function setBaseURI(string memory baseURI) external;
 }

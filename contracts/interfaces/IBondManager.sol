@@ -45,51 +45,53 @@ interface IBondManager {
 
     function getActiveBondLevels() external view returns (bytes4[] memory);
 
-    function getBondLevel(bytes4 _levelID) external view returns (BondLevel memory);
+    function getBondLevel(bytes4 levelID) external view returns (BondLevel memory);
 
-    function getUserXP(address _user) external view returns (uint256);
+    function getUserXP(address user) external view returns (uint256);
 
     function getPrice(bytes4 levelID) external view returns (uint256, bool);
 
-    function getClaimableAmounts(uint256 _bondID) external view returns (uint256 claimableShares, uint256 claimableRewards);
+    function getClaimableAmounts(uint256 bondID) external view returns (uint256 claimableShares, uint256 claimableRewards);
 
-    function startDiscountAt(uint256 _startAt, uint256 _endAt, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external;
+    function setTreasury(address _treasury) external;
 
-    function startDiscountIn(uint256 _startIn, uint256 _endIn, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external;
+    function startDiscountAt(uint256 startAt, uint256 endAt, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external;
 
-    function startWhitelistedDiscountAt(uint256 _startAt, uint256 _endWhitelistAt, uint256 _endAt, bytes32 _merkleRoot, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external;
+    function startDiscountIn(uint256 startIn, uint256 endIn, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external;
 
-    function startWhitelistedDiscountIn(uint256 _startIn, uint256 _endWhitelistIn, uint256 _endIn, bytes32 _merkleRoot, uint16 _discountRate, uint240 _updateFrequency, uint256[] memory _purchaseLimit) external;
+    function startWhitelistedDiscountAt(uint256 startAt, uint256 endWhitelistAt, uint256 endAt, bytes32 merkleRoot, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external;
+
+    function startWhitelistedDiscountIn(uint256 startIn, uint256 endWhitelistIn, uint256 endIn, bytes32 merkleRoot, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external;
 
     function deactivateDiscount() external;
 
-    function addBondLevelAtIndex(string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _index, uint256 _price) external returns (bytes4);
+    function addBondLevelAtIndex(string memory name, uint256 weight, uint256 maxSupply, uint256 index, uint256 price) external returns (bytes4);
 
-    function addBondLevel(string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _price) external returns (bytes4);
+    function addBondLevel(string memory name, uint256 weight, uint256 maxSupply, uint256 price) external returns (bytes4);
 
-    function changeBondLevel(bytes4 levelID, string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _price) external;
+    function changeBondLevel(bytes4 levelID, string memory name, uint256 weight, uint256 maxSupply, uint256 price) external;
 
     function deactivateBondLevel(bytes4 levelID) external;
 
-    function activateBondLevel(bytes4 levelID, uint256 _index) external;
+    function activateBondLevel(bytes4 levelID, uint256 index) external;
 
-    function rearrangeBondLevel(bytes4 levelID, uint256 _index) external;
+    function rearrangeBondLevel(bytes4 levelID, uint256 index) external;
 
     function toggleSale() external;
 
-    function createMultipleBondsWithTokens(bytes4 levelID, uint256 _amount, bytes32[] calldata _merkleProof) external;
+    function createMultipleBondsWithTokens(bytes4 levelID, uint256 amount, bytes32[] calldata merkleProof) external;
 
-    function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external;
+    function depositRewards(uint256 issuedRewards, uint256 issuedShares) external;
 
-    function claim(uint256 _bondID) external;
+    function claim(uint256 bondID) external;
 
     function claimAll() external;
 
-    function batchClaim(uint256[] memory _bondIDs) external;
+    function batchClaim(uint256[] memory bondIDs) external;
 
     function linkBondManager() external;
 
-    function setUserXP(uint256 _amount, address _user) external;
+    function setUserXP(uint256 amount, address user) external;
 
-    function setBaseURI(string memory baseURI_) external;
+    function setBaseURI(string memory baseURI) external;
 }

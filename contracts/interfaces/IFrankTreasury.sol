@@ -29,29 +29,29 @@ interface IFrankTreasury {
 
     function getStrategy() external view returns (Strategy memory);
 
-    function setBondManager(address _bondManager) external;
+    function setBondManager(address bondManager) external;
 
-    function setFee(uint256 _fee) external;
+    function setFee(uint256 fee) external;
 
-    function setDistributionThreshold(uint256 _threshold) external;
+    function setDistributionThreshold(uint256 threshold) external;
 
     function setSlippage (uint256 _slippage) external;
 
-    function setStrategy(uint256[2] memory _DISTRIBUTION_BONDED_JOE, uint256[3] memory _DISTRIBUTION_REINVESTMENTS, uint256 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL) external;
+    function setStrategy(uint256[2] memory DISTRIBUTION_BONDED_JOE, uint256[3] memory DISTRIBUTION_REINVESTMENTS, uint256 PROPORTION_REINVESTMENTS, address LIQUIDITY_POOL) external;
 
     function distribute() external;
 
-    function bondDeposit(uint256 _amount, address _sender) external;
+    function bondDeposit(uint256 amount, address user) external;
 
-    function addAndFarmLiquidity(uint256 _amount, address _pool) external;
+    function addAndFarmLiquidity(uint256 amount, address pool) external;
 
-    function removeLiquidity(uint256 _amount, address _pool) external;
+    function removeLiquidity(uint256 amount, address pool) external;
 
-    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external;
+    function reallocateLiquidity(address previousPool, address newPool, uint256 amount) external;
 
     function harvestAll() external;
 
-    function withdraw(address _token, uint256 _amount, address _receiver) external;
+    function withdraw(address token, uint256 amount, address receiver) external;
 
     function execute(address target, uint256 value, bytes calldata data) external returns (bool, bytes memory);
 }

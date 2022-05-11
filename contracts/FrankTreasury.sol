@@ -51,12 +51,12 @@ contract FrankTreasury is Ownable {
     }
 
     /// @notice Contract interfaces
-    //IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
-    IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0xf09597ef3cEebd18905ba573E48ec9Ad3A160096);
-    IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0xCF6E93c729f07019819Bc67C7ebadda4FaC3b233);
-    IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-    IERC20 public constant JOE = IERC20(0x1217686124AA11323cC389a8BC39C170D665370b);
-    IERC20 public constant USDC = IERC20(0x1217686124AA11323cC389a8BC39C170D665370b);
+    IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0x25D85E17dD9e544F6E9F8D44F99602dbF5a97341);
+    IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0x1a731B2299E22FbAC282E7094EdA41046343Cb51);
+    IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x60aE616a2155Ee3d9A68541Ba4544862310933d4);
+    IERC20 public constant JOE = IERC20(0x6e84a6216eA6dACC71eE8E6b0a5B7322EEbC0fDd);
+    IERC20 public constant USDC = IERC20(0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E);
     IBondManager public BondManager;
 
     address private constant teamAddress = 0xE6461Da23098d2420Ce9A35b329FA82db0919c30;
@@ -83,14 +83,21 @@ contract FrankTreasury is Ownable {
     /// @dev Strategy object.
     Strategy private strategy;
 
+    event SET_FEE (uint256 fee);
+
+    event SET_DISTRIBUTION_THRESHOLD (uint256 threshold);
+
+    event SET_SLIPPAGE (uint256 slippage);
+
+    event SET_STRATEGY (uint256[2] DISTRIBUTION_BONDED_JOE, uint256[3] DISTRIBUTION_REINVESTMENTS, uint256 PROPORTION_REINVESTMENTS, address LIQUIDITY_POOL);
+
+    event ADD_LIQUIDITY (address indexed pool, uint256 amount);
+
+    event REMOVE_LIQUIDITY (address indexed pool, uint256 amount);
+
     constructor() {
         setFee(2000);
         setStrategy([uint256(50000),50000], [uint256(45000),45000,10000], 50000, 0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0);
-
-        JOE.approve(address(SJoeStaking), (10 ** 40));
-        JOE.approve(address(VeJoeStaking), (10 ** 40));
-        JOE.approve(address(TraderJoeRouter), (10 ** 40));
-        USDC.approve(address(TraderJoeRouter), (10 ** 40));
     }
 
     function getCurrentRevenue() public view returns (uint256) {
@@ -106,124 +113,134 @@ contract FrankTreasury is Ownable {
     }
 
     /// @notice Change the bond manager address.
-    /// @param _bondManager New BondManager address.
-    function setBondManager(address _bondManager) external onlyOwner {
-        BondManager = IBondManager(_bondManager);
-        JOE.approve(address(BondManager), (10 ** 40));
+    /// @param bondManager New BondManager address.
+    function setBondManager(address bondManager) external onlyOwner {
+        BondManager = IBondManager(bondManager);
     }
 
     /// @notice Change the fee for team and investors.
-    /// @param _fee New fee.
+    /// @param fee New fee.
     /// @dev Team and investors will have the same fee.
-    function setFee(uint256 _fee) public onlyOwner {
-        internalFee = _fee;
+    function setFee(uint256 fee) public onlyOwner {
+        internalFee = fee;
+
+        emit SET_FEE(fee);
     }
 
     /// @notice Change minimum amount of revenue required to call the distribute() function.
-    /// @param _threshold New threshold.
-    function setDistributionThreshold(uint256 _threshold) external onlyOwner {
-        DISTRIBUTE_THRESHOLD = _threshold;
+    /// @param threshold New threshold.
+    function setDistributionThreshold(uint256 threshold) external onlyOwner {
+        DISTRIBUTE_THRESHOLD = threshold;
+
+        emit SET_DISTRIBUTION_THRESHOLD(threshold);
     }
 
     /// @notice Change slippage variable.
     /// @param _slippage New slippage amount.
     function setSlippage(uint256 _slippage) external onlyOwner {
         slippage = _slippage;
+
+        emit SET_SLIPPAGE(slippage);
     }
 
     /// @notice Set the Treasury's strategy.
-    /// @param _DISTRIBUTION_BONDED_JOE 2 value array storing 1. proportion of BONDED JOE staked to sJOE 2. proportion staked to veJOE.
-    /// @param _DISTRIBUTION_REINVESTMENTS 3 value array storing 1. proportion of REINVESTED REVENUE staked to sJOE 2. proportion staked to veJOE 3. proportion farmed in BMCJ.
-    /// @param _PROPORTION_REINVESTMENTS Proportion of REVENUE reinvested within the protocol.
-    /// @param _LIQUIDITY_POOL Liquidity pool currently farmed on BMCJ.
-    function setStrategy(uint256[2] memory _DISTRIBUTION_BONDED_JOE, uint256[3] memory _DISTRIBUTION_REINVESTMENTS, uint256 _PROPORTION_REINVESTMENTS, address _LIQUIDITY_POOL) public onlyOwner {
-        require(_DISTRIBUTION_BONDED_JOE.length == 2);
-        require(_DISTRIBUTION_BONDED_JOE[0] + _DISTRIBUTION_BONDED_JOE[1] == 100_000);
-        strategy.DISTRIBUTION_BONDED_JOE = _DISTRIBUTION_BONDED_JOE;
+    /// @param DISTRIBUTION_BONDED_JOE 2 value array storing 1. proportion of BONDED JOE staked to sJOE 2. proportion staked to veJOE.
+    /// @param DISTRIBUTION_REINVESTMENTS 3 value array storing 1. proportion of REINVESTED REVENUE staked to sJOE 2. proportion staked to veJOE 3. proportion farmed in BMCJ.
+    /// @param PROPORTION_REINVESTMENTS Proportion of REVENUE reinvested within the protocol.
+    /// @param LIQUIDITY_POOL Liquidity pool currently farmed on BMCJ.
+    function setStrategy(uint256[2] memory DISTRIBUTION_BONDED_JOE, uint256[3] memory DISTRIBUTION_REINVESTMENTS, uint256 PROPORTION_REINVESTMENTS, address LIQUIDITY_POOL) public onlyOwner {
+        require(DISTRIBUTION_BONDED_JOE.length == 2);
+        require(DISTRIBUTION_BONDED_JOE[0] + DISTRIBUTION_BONDED_JOE[1] == 100_000);
+        strategy.DISTRIBUTION_BONDED_JOE = DISTRIBUTION_BONDED_JOE;
 
-        require(_DISTRIBUTION_REINVESTMENTS.length == 3);
-        require(_DISTRIBUTION_REINVESTMENTS[0] + _DISTRIBUTION_REINVESTMENTS[1] + _DISTRIBUTION_REINVESTMENTS[2] == 100_000);
-        strategy.DISTRIBUTION_REINVESTMENTS = _DISTRIBUTION_REINVESTMENTS;
+        require(DISTRIBUTION_REINVESTMENTS.length == 3);
+        require(DISTRIBUTION_REINVESTMENTS[0] + DISTRIBUTION_REINVESTMENTS[1] + DISTRIBUTION_REINVESTMENTS[2] == 100_000);
+        strategy.DISTRIBUTION_REINVESTMENTS = DISTRIBUTION_REINVESTMENTS;
 
-        require(_PROPORTION_REINVESTMENTS <= 100_000);
-        strategy.PROPORTION_REINVESTMENTS = _PROPORTION_REINVESTMENTS;
+        require(PROPORTION_REINVESTMENTS <= 100_000);
+        strategy.PROPORTION_REINVESTMENTS = PROPORTION_REINVESTMENTS;
 
-        strategy.LIQUIDITY_POOL = _LIQUIDITY_POOL;
+        strategy.LIQUIDITY_POOL = LIQUIDITY_POOL;
+
+        emit SET_STRATEGY(DISTRIBUTION_BONDED_JOE, DISTRIBUTION_REINVESTMENTS, PROPORTION_REINVESTMENTS, LIQUIDITY_POOL);
     }
 
     /// @notice Distribute revenue to BondManager (where bond holders can later claim rewards and shares).
     /// @dev Anyone can call this function, if the current revenue is above a certain threshold (DISTRIBUTE_THRESHOLD). 
     function distribute() external {
-        //harvest();
-        //require(currentRevenue >= DISTRIBUTE_THRESHOLD, "Revenue can't be distributed yet.");
+        harvestAll();
+        require(currentRevenue >= DISTRIBUTE_THRESHOLD, "Revenue can't be distributed yet.");
 
         uint256 _currentRevenue = currentRevenue;
-        uint256 _feeAmount = SafeMath.div(SafeMath.mul(_currentRevenue, internalFee), FEE_PRECISION);
+        uint256 feeAmount = SafeMath.div(SafeMath.mul(_currentRevenue, internalFee), FEE_PRECISION);
 
-        JOE.safeTransfer(teamAddress, _feeAmount);
-        JOE.safeTransfer(investorAddress, _feeAmount);
+        JOE.safeTransfer(teamAddress, feeAmount);
+        JOE.safeTransfer(investorAddress, feeAmount);
 
-        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.mul(_feeAmount, 2));
+        _currentRevenue = SafeMath.sub(_currentRevenue, SafeMath.mul(feeAmount, 2));
 
-        uint256 _reinvestedAmount = SafeMath.div(SafeMath.mul(_currentRevenue, strategy.PROPORTION_REINVESTMENTS), 100_000);
-        uint256 _rewardedAmount = SafeMath.sub(_currentRevenue, _reinvestedAmount);
+        uint256 reinvestedAmount = SafeMath.div(SafeMath.mul(_currentRevenue, strategy.PROPORTION_REINVESTMENTS), 100_000);
+        uint256 rewardedAmount = SafeMath.sub(_currentRevenue, reinvestedAmount);
 
-        _reinvest(_reinvestedAmount);
+        reinvest(reinvestedAmount);
 
-        //JOE.approve(address(BondManager), _rewardedAmount);
-        BondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
+        JOE.approve(address(BondManager), rewardedAmount);
+        BondManager.depositRewards(rewardedAmount, reinvestedAmount);
 
         totalRevenue = SafeMath.add(totalRevenue, currentRevenue);
         currentRevenue = 0;
     }
 
     /// @notice Internal function used to reinvest part of revenue when calling distribute().
-    /// @param _amount Amount of JOE tokens to reinvest.
-    function _reinvest(uint256 _amount) private {
-        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_REINVESTMENTS);
+    /// @param amount Amount of JOE tokens to reinvest.
+    function reinvest(uint256 amount) private {
+        uint256[] memory amounts = proportionDivide(amount, strategy.DISTRIBUTION_REINVESTMENTS);
 
         uint256 excess = _addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
 
-        //JOE.approve(address(SJoeStaking), amounts[0] + excess);
-        //JOE.approve(address(VeJoeStaking), amounts[1]);
+        JOE.approve(address(SJoeStaking), amounts[0] + excess);
+        JOE.approve(address(VeJoeStaking), amounts[1]);
 
         SJoeStaking.deposit(amounts[0] + excess);
         VeJoeStaking.deposit(amounts[1]);
     }
 
     /// @notice Function called by BondManager contract everytime a bond is minted.
-    /// @param _amount Amount of tokens deposited to the treasury.
-    /// @param _sender Address of bond minter.
-    function bondDeposit(uint256 _amount, address _sender) external {
+    /// @param amount Amount of tokens deposited to the treasury.
+    /// @param user Address of bond minter.
+    function bondDeposit(uint256 amount, address user) external {
         require(_msgSender() == address(BondManager));
 
-        JOE.safeTransferFrom(_sender, address(this), _amount);
+        JOE.safeTransferFrom(user, address(this), amount);
 
-        uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_BONDED_JOE);
+        uint256[] memory amounts = proportionDivide(amount, strategy.DISTRIBUTION_BONDED_JOE);
         
+        JOE.approve(address(SJoeStaking), amounts[0]);
+        JOE.approve(address(VeJoeStaking), amounts[1]);
+
         SJoeStaking.deposit(amounts[0]);
         VeJoeStaking.deposit(amounts[1]);
     }
 
 
     /// @notice Convert treasury JOE to LP tokens and farms them on BMCJ.
-    /// @param _amount Amount of JOE tokens to farm.
-    /// @param _pool Boosted pool address.
+    /// @param amount Amount of JOE tokens to farm.
+    /// @param pool Boosted pool address.
     /// @dev Only JOE pools are supported, in order to keep partial exposure to the JOE token. 
-    function _addAndFarmLiquidity(uint256 _amount, address _pool) private returns (uint256 excess) {
-        IJoePair pair = IJoePair(_pool);
+    function _addAndFarmLiquidity(uint256 amount, address pool) private returns (uint256 excess) {
+        IJoePair pair = IJoePair(pool);
 
         require(pair.token0() == address(JOE) || pair.token1() == address(JOE));
 
         address otherToken = pair.token0() == address(JOE) ? pair.token1() : pair.token0();
 
-        uint256 safeAmount = (_amount / 2 * slippage) / 1000;
+        uint256 safeAmount = (amount / 2 * slippage) / 1000;
 
         address[] memory path = new address[](2);
         path[0] = address(JOE);
         path[1] = otherToken;
 
-        //JOE.approve(address(TraderJoeRouter), safeAmount);
+        JOE.approve(address(TraderJoeRouter), safeAmount);
 
         uint256 amountOutOther = TraderJoeRouter.swapExactTokensForTokens(safeAmount, (TraderJoeRouter.getAmountsOut(safeAmount, path)[1]) * slippage / 1000, path, address(this), block.timestamp + 2000)[1];
 
@@ -235,43 +252,50 @@ contract FrankTreasury is Ownable {
 
         uint quoteJOE = TraderJoeRouter.quote(amountOutOther, reserveOther, reserveJOE);
 
-        //JOE.approve(address(TraderJoeRouter), quoteJOE);
+        JOE.approve(address(TraderJoeRouter), quoteJOE);
         IERC20(otherToken).approve(address(TraderJoeRouter), amountOutOther);
 
-        (, uint256 amountInJoe, ) = TraderJoeRouter.addLiquidity(otherToken, address(JOE), amountOutOther, quoteJOE, 0, 0, address(this), block.timestamp + 1000);
+        (, uint256 amountInJoe, uint256 liquidity) = TraderJoeRouter.addLiquidity(otherToken, address(JOE), amountOutOther, quoteJOE, 0, 0, address(this), block.timestamp + 1000);
 
-        require(amountInJoe + safeAmount <= _amount, "Try setting higher slippage.");
+        require(amountInJoe + safeAmount <= amount, "Try setting higher slippage.");
 
-        if(amountInJoe + safeAmount < _amount) {
-            excess = _amount - (amountInJoe + safeAmount);
+        if(amountInJoe + safeAmount < amount) {
+            excess = amount - (amountInJoe + safeAmount);
         } else {
             excess = 0;
         }
 
-        //uint256 pid = getPoolIDFromLPToken(_pool);
+        
 
-        //if (!isPIDActive[pid]) {
-        //    activePIDs.push(pid);
-        //    isPIDActive[pid] = true;
-        //}
+        uint256 pid = getPoolIDFromLPToken(pool);
 
-        //IERC20(_pool).approve(address(BMCJ), liquidity);
+        if (!isPIDActive[pid]) {
+            activePIDs.push(pid);
+            isPIDActive[pid] = true;
+        }
+
+        IERC20(pool).approve(address(BMCJ), liquidity);
         
         uint256 balanceBefore = JOE.balanceOf(address(this));
-        //BMCJ.deposit(pid, liquidity);
+        BMCJ.deposit(pid, liquidity);
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
+
+        
+
+        emit ADD_LIQUIDITY(pool, liquidity);
     }
 
     /// @notice Remove liquidity from Boosted pool and convert assets to JOE.
-    /// @param _amount Amount of LP tokens to remove from liquidity.
-    /// @param _pool Boosted pool address.
-    function _removeLiquidity(uint256 _amount, address _pool) private returns (uint256) {
-        uint256 liquidityBalance = IERC20(_pool).balanceOf(address(this));
-        require(liquidityBalance >= _amount);
-/*
-        uint256 pid = getPoolIDFromLPToken(_pool);
+    /// @param amount Amount of LP tokens to remove from liquidity.
+    /// @param pool Boosted pool address.
+    function _removeLiquidity(uint256 amount, address pool) private returns (uint256) {
+        uint256 liquidityBalance = IERC20(pool).balanceOf(address(this));
+        require(liquidityBalance >= amount);
 
-        if (_amount == liquidityBalance) {
+        
+        uint256 pid = getPoolIDFromLPToken(pool);
+
+        if (amount == liquidityBalance) {
             isPIDActive[pid] = false;
             bool isPIDFound = false;
 
@@ -287,22 +311,22 @@ contract FrankTreasury is Ownable {
             activePIDs.pop();
             
         }
-        */
+        
+        
 
-        IJoePair pair = IJoePair(_pool);
+        IJoePair pair = IJoePair(pool);
 
         address otherToken = pair.token0() == address(JOE) ? pair.token1() : pair.token0();
 
+        
         uint256 balanceBefore = JOE.balanceOf(address(this));
-        //BMCJ.withdraw(pid, _amount);
+        BMCJ.withdraw(pid, amount);
         uint256 balanceAfter = JOE.balanceOf(address(this));
         currentRevenue +=  balanceAfter - balanceBefore;
 
-        //SAFETY SLIPPAGE
+        IERC20(pool).approve(address(TraderJoeRouter), amount);
 
-        IERC20(_pool).approve(address(TraderJoeRouter), _amount);
-
-        (uint256 amountOther, ) = TraderJoeRouter.removeLiquidity(otherToken, address(JOE), _amount, 0, 0, address(this), block.timestamp);
+        (uint256 amountOther, ) = TraderJoeRouter.removeLiquidity(otherToken, address(JOE), amount, 0, 0, address(this), block.timestamp);
 
         address[] memory path = new address[](2);
         path[0] = otherToken;
@@ -311,34 +335,36 @@ contract FrankTreasury is Ownable {
         IERC20(otherToken).approve(address(TraderJoeRouter), amountOther);
         TraderJoeRouter.swapExactTokensForTokens(amountOther, (TraderJoeRouter.getAmountsOut(amountOther, path)[1]) * slippage / 1000, path, address(this), (block.timestamp + 1000));
 
-        return JOE.balanceOf(address(this)) - balanceAfter;
+        emit ADD_LIQUIDITY(pool, amount);
+
+        return 0;
     }
 
     /// @notice Public onlyOwner implementation of _addAndFarmLiquidity function.
-    /// @param _amount Amount of JOE tokens to farm.
-    /// @param _pool Boosted pool address.
+    /// @param amount Amount of JOE tokens to farm.
+    /// @param pool Boosted pool address.
     /// @dev Used to reallocate protocol owned liquidity. First liquidity from a pool is removed with removeLiquidity() and then it is migrated to another pool
     /// through this function. 
-    function addAndFarmLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256 excess) {
-        excess = _addAndFarmLiquidity(_amount, _pool);
+    function addAndFarmLiquidity(uint256 amount, address pool) public onlyOwner returns (uint256 excess) {
+        excess = _addAndFarmLiquidity(amount, pool);
     }
 
     /// @notice Public onlyOwner implementation of _removeLiquidity function.
-    /// @param _amount Amount of LP tokens to remove.
-    /// @param _pool Boosted pool address.
-    function removeLiquidity(uint256 _amount, address _pool) public onlyOwner returns (uint256) {
-        return _removeLiquidity(_amount, _pool);
+    /// @param amount Amount of LP tokens to remove.
+    /// @param pool Boosted pool address.
+    function removeLiquidity(uint256 amount, address pool) public onlyOwner returns (uint256) {
+        return _removeLiquidity(amount, pool);
     }
 
     /// @notice Function used to migrate liquidity from one pool to another.
-    /// @param _previousPool Pool from which liquidity must be removed.
-    /// @param _newPool Pool from which liquidity must be added.
-    /// @param _amount Amount of LP (_previousPool) tokens that must be migrated.
-    function reallocateLiquidity(address _previousPool, address _newPool, uint256 _amount) external onlyOwner {
-        uint256 JOEAmount = _removeLiquidity(_amount, _previousPool);
-        uint256 excess = _addAndFarmLiquidity(JOEAmount, _newPool);
+    /// @param previousPool Pool from which liquidity must be removed.
+    /// @param newPool Pool from which liquidity must be added.
+    /// @param amount Amount of LP (_previousPool) tokens that must be migrated.
+    function reallocateLiquidity(address previousPool, address newPool, uint256 amount) external onlyOwner {
+        uint256 JOEAmount = _removeLiquidity(amount, previousPool);
+        uint256 excess = _addAndFarmLiquidity(JOEAmount, newPool);
 
-        //JOE.approve(address(SJoeStaking), excess);
+        JOE.approve(address(SJoeStaking), excess);
         SJoeStaking.deposit(excess);
     }
 
@@ -347,12 +373,12 @@ contract FrankTreasury is Ownable {
     function harvestAll() public { 
         uint256 balanceBefore = JOE.balanceOf(address(this));
         
-        /*
+        
         for(uint i = 0; i < activePIDs.length; i++) {
-            BMCJ.deposit(_pid, 0);
+            BMCJ.deposit(activePIDs[i], 0);
         }
-        */
-
+        
+        
         claimJoeFromStaking();
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
     }
@@ -362,7 +388,9 @@ contract FrankTreasury is Ownable {
         IStableJoeStaking(SJoeStaking).withdraw(0);
 
         // Converts USDC rewards to JOE
-        /*
+
+        
+        
         address[] memory path = new address[](2);
         path[0] = address(USDC);
         path[1] = address(JOE);
@@ -371,56 +399,57 @@ contract FrankTreasury is Ownable {
 
         USDC.approve(address(TraderJoeRouter), USDCBalance);
         TraderJoeRouter.swapExactTokensForTokens(USDCBalance, (TraderJoeRouter.getAmountsOut(USDCBalance, path)[1]) * slippage / 1000, path, address(this), (block.timestamp + 1000));
-        */
+        
+        
+
         IVeJoeStaking(VeJoeStaking).claim();
     }
 
     /// @notice Internal function to divide an amount into different proportions.
-    /// @param amount_ Amount to divide.
-    /// @param _proportions Array of the different proportions in which to divide amount_
-    function proportionDivide(uint256 amount_, uint256[] memory _proportions) private pure returns (uint256[] memory _amounts) {
+    /// @param amount Amount to divide.
+    /// @param proportions Array of the different proportions in which to divide amount_
+    function proportionDivide(uint256 amount, uint256[] memory proportions) private pure returns (uint256[] memory amounts) {
         uint256 amountTotal;
         uint256 proportionTotal;
-        _amounts = new uint256[](_proportions.length);
+        amounts = new uint256[](proportions.length);
 
-        for (uint256 i = 0; i < _proportions.length; i++) {
-            uint256 _amount = (amount_ * _proportions[i]) / 100_000;
+        for (uint256 i = 0; i < proportions.length; i++) {
+            uint256 _amount = (amount * proportions[i]) / 100_000;
             amountTotal += _amount;
-            proportionTotal += _proportions[i];
-            _amounts[i] = _amount;
+            proportionTotal += proportions[i];
+            amounts[i] = _amount;
         }
 
         require(proportionTotal == 100_000);
-        require(amountTotal <= amount_);
+        require(amountTotal <= amount);
 
         // If there is a small excess due _amount not being perfectly divisible by the proportions, that excess is
         // added to the first amount -> Always (sJOE) in this case.
-        if (amountTotal < amount_) {
-            _amounts[0] += (amount_ - amountTotal);
+        if (amountTotal < amount) {
+            amounts[0] += (amount - amountTotal);
         }
 
-        return _amounts;
+        return amounts;
     }
 
     /// @notice Get PID from LP token address.
-    /// @param _token LP token address. 
-    /*
-    function getPoolIDFromLPToken(address _token) internal view returns (uint256) {
+    /// @param token LP token address. 
+    function getPoolIDFromLPToken(address token) internal view returns (uint256) {
         for (uint256 i = 0; i < BMCJ.poolLength(); i++) {
             (address _lp, , , , , , , , ) = BMCJ.poolInfo(i);
-            if (_lp == _token) {
+            if (_lp == token) {
                 return i;
             }
         }
         revert();
     }
-    */
+    
 
     /// @notice Emergency withdraw function.
-    /// @param _token Token to withdraw.
-    /// @param _receiver Token receiver.
-    function withdraw(address _token, uint256 _amount, address _receiver) external onlyOwner {
-        IERC20(_token).transfer(_receiver, _amount);
+    /// @param token Token to withdraw.
+    /// @param receiver Token receiver.
+    function withdraw(address token, uint256 amount, address receiver) external onlyOwner {
+        IERC20(token).transfer(receiver, amount);
     }
 
     /// @notice Open-ended execute function.
