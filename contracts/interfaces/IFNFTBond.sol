@@ -6,13 +6,8 @@ interface IFNFTBond {
 
     struct Bond {
         uint256 bondID;
-        uint224 mint;
         bytes4 levelID;
-        uint256 earned;
-        uint256 unweightedShares;
-        uint256 weightedShares;
-        uint256 rewardDebt;
-        uint256 shareDebt;
+        uint256 index;
     }
 
     function BondManager() external view returns (address);
@@ -25,7 +20,7 @@ interface IFNFTBond {
 
     function linkBondManager(address bondManager) external;
 
-    function mintBonds(address user, bytes4 levelID, uint256 amount, uint256 weightedShares, uint256 unweightedShares) external;
+    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount) external;
 
     function claim(address user, uint256 bondID, uint256 issuedRewards, uint256 issuedShares) external;
 
