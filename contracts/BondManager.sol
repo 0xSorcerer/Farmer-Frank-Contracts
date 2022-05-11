@@ -163,9 +163,9 @@ contract BondManager is Ownable, BondDiscountable {
         bool active;
         // Bond weight multipliers. Used to calculate weighted shares.
         // Weight is percentage (out of 100), hence weight = 100 would mean 1x (base multiplier).
-        uint16 weight;
+        uint256 weight;
         // Maximum supply of bonds of that level. If set to 0, the maximum supply is unlimited.
-        uint64 maxSupply;
+        uint256 maxSupply;
         // Bond level name used on Farmer Frank's UI.
         string name;
         // Bond price.
@@ -199,7 +199,7 @@ contract BondManager is Ownable, BondDiscountable {
     bool public isSaleActive = true;
 
     /// @dev Maximum amount of Bond levels that can be concurrently active.
-    uint16 private constant MAX_BOND_LEVELS = 10;
+    uint256 private constant MAX_BOND_LEVELS = 10;
 
     /// @dev Array storing all active Bond levels.
     bytes4[] private activeBondLevels;
@@ -379,7 +379,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @dev When adding a bond level whose index isn't activeBondLevels.length, the contract loops through
     /// the array shifting its elements. We disregard unbounded gas cost possible error as the contract
     /// is designed to store a "concise" amount of Bond levels: 10 --> MAX_BOND_LEVELS.
-    function addBondLevelAtIndex(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _index, uint256 _price) public onlyOwner returns (bytes4) {
+    function addBondLevelAtIndex(string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _index, uint256 _price) public onlyOwner returns (bytes4) {
         require(!isDiscountPlanned(), "Bond Manager: Can't add bond level during a discount.");
         require(MAX_BOND_LEVELS > activeBondLevels.length, "Bond Manager: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(_index <= activeBondLevels.length, "Bond Manager: Index out of bounds.");
@@ -421,7 +421,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _weight Weight percentage of Bond level (>= 100).
     /// @param _maxSupply Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
     /// @param _price Bond base price. Meaning that price doesn't take into account decimals (ex 10**18).
-    function addBondLevel(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _price) external onlyOwner returns (bytes4) {
+    function addBondLevel(string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _price) external onlyOwner returns (bytes4) {
         return addBondLevelAtIndex(_name, _weight, _maxSupply, activeBondLevels.length, _price);
     }
 
@@ -431,7 +431,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param _weight New Weight percentage of Bond level (>= 100).
     /// @param _maxSupply Maximum supply of bonds of that level. If set to 0, there isn't a maximum supply.
     /// @param _price New Bond price.
-    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _price) external onlyOwner {
+    function changeBondLevel(bytes4 levelID, string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _price) external onlyOwner {
         bondLevels[levelID] = BondLevel({
             levelID: levelID,
             active: true,
@@ -527,7 +527,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param levelID level hex ID.
     /// @param _amount Desired amount ot be minted.
     /// @param _merkleProof merkle proof needed only when a whitelisted discount is active. 
-    function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount, bytes32[] calldata _merkleProof) public {
+    function createMultipleBondsWithTokens(bytes4 levelID, uint256 _amount, bytes32[] calldata _merkleProof) public {
         require(isSaleActive, "Bond Manager: Bond sale is inactive.");
         require(_amount > 0 && _amount <= 20, "Bond Manager: Invalid amount to mint.");
         require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");

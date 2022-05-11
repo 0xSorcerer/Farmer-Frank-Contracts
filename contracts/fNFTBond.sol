@@ -66,9 +66,6 @@ contract fNFTBond is ERC721, Ownable {
     uint256 private constant GLOBAL_PRECISION = 10**18;
     uint256 private constant WEIGHT_PRECISION = 100;
 
-    /// @dev Maximum amount of Bond levels the contract can support.
-    uint16 private constant MAX_BOND_LEVELS = 10;
-
     /// @dev Mapping storing all bonds data.
     mapping(uint256 => Bond) private bonds; 
 
@@ -155,7 +152,7 @@ contract fNFTBond is ERC721, Ownable {
     /// @param _amount Amount of tokens that will get minted.
     /// @param _weightedShares Amount of weighted shares the bond will have at mint.
     /// @param _unweightedShares Amount of unweighted shares the bond will have at mint.
-    function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _weightedShares, uint256 _unweightedShares) onlyOwner external {
+    function mintBonds(address _account, bytes4 levelID, uint256 _amount, uint256 _weightedShares, uint256 _unweightedShares) onlyOwner external {
         require(address(bondManager) != address(0), "fNFT Bond: BondManager isn't set.");
         
         // Calculate current debt amounts. 
@@ -163,7 +160,7 @@ contract fNFTBond is ERC721, Ownable {
         uint256 _rewardDebt = SafeMath.div(SafeMath.mul(_weightedShares, bondManager.accRewardsPerWS()), GLOBAL_PRECISION);
         uint224 timestamp = uint224(block.timestamp);
 
-        for (uint8 i = 0; i < _amount; i++) {
+        for (uint i = 0; i < _amount; i++) {
             uint256 _bondID = totalSupply();
 
             // Add bond object to bonds mapping.

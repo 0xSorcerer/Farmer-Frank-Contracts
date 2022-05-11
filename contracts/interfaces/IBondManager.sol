@@ -7,8 +7,8 @@ interface IBondManager {
     struct BondLevel {
         bytes4 levelID;
         bool active;
-        uint16 weight;
-        uint64 maxSupply;
+        uint256 weight;
+        uint256 maxSupply;
         string name;
         uint256 price;
     }
@@ -63,11 +63,11 @@ interface IBondManager {
 
     function deactivateDiscount() external;
 
-    function addBondLevelAtIndex(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _index, uint256 _price) external returns (bytes4);
+    function addBondLevelAtIndex(string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _index, uint256 _price) external returns (bytes4);
 
-    function addBondLevel(string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _price) external returns (bytes4);
+    function addBondLevel(string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _price) external returns (bytes4);
 
-    function changeBondLevel(bytes4 levelID, string memory _name, uint16 _weight, uint32 _maxSupply, uint256 _price) external;
+    function changeBondLevel(bytes4 levelID, string memory _name, uint256 _weight, uint256 _maxSupply, uint256 _price) external;
 
     function deactivateBondLevel(bytes4 levelID) external;
 
@@ -77,7 +77,7 @@ interface IBondManager {
 
     function toggleSale() external;
 
-    function createMultipleBondsWithTokens(bytes4 levelID, uint16 _amount, bytes32[] calldata _merkleProof) external;
+    function createMultipleBondsWithTokens(bytes4 levelID, uint256 _amount, bytes32[] calldata _merkleProof) external;
 
     function depositRewards(uint256 _issuedRewards, uint256 _issuedShares) external;
 

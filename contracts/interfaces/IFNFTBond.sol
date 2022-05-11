@@ -25,7 +25,7 @@ interface IFNFTBond {
 
     function _linkBondManager(address _bondManager) external;
 
-    function mintBonds(address _account, bytes4 levelID, uint8 _amount, uint256 _weightedShares, uint256 _unweightedShares) external;
+    function mintBonds(address _account, bytes4 levelID, uint256 _amount, uint256 _weightedShares, uint256 _unweightedShares) external;
 
     function claim(address _account, uint256 _bondID, uint256 issuedRewards, uint256 issuedShares) external;
 

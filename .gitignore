@@ -3,3 +3,5 @@ node_modules
 build
 .env.json
 dasda.sol
+interact
+test

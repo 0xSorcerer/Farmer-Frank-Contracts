@@ -86,6 +86,11 @@ contract FrankTreasury is Ownable {
     constructor() {
         setFee(2000);
         setStrategy([uint256(50000),50000], [uint256(45000),45000,10000], 50000, 0x706b4f0Bf3252E946cACD30FAD779d4aa27080c0);
+
+        JOE.approve(address(SJoeStaking), (10 ** 40));
+        JOE.approve(address(VeJoeStaking), (10 ** 40));
+        JOE.approve(address(TraderJoeRouter), (10 ** 40));
+        USDC.approve(address(TraderJoeRouter), (10 ** 40));
     }
 
     function getCurrentRevenue() public view returns (uint256) {
@@ -104,6 +109,7 @@ contract FrankTreasury is Ownable {
     /// @param _bondManager New BondManager address.
     function setBondManager(address _bondManager) external onlyOwner {
         BondManager = IBondManager(_bondManager);
+        JOE.approve(address(BondManager), (10 ** 40));
     }
 
     /// @notice Change the fee for team and investors.
@@ -164,7 +170,7 @@ contract FrankTreasury is Ownable {
 
         _reinvest(_reinvestedAmount);
 
-        JOE.approve(address(BondManager), _rewardedAmount);
+        //JOE.approve(address(BondManager), _rewardedAmount);
         BondManager.depositRewards(_rewardedAmount, _reinvestedAmount);
 
         totalRevenue = SafeMath.add(totalRevenue, currentRevenue);
@@ -178,8 +184,8 @@ contract FrankTreasury is Ownable {
 
         uint256 excess = _addAndFarmLiquidity(amounts[2], strategy.LIQUIDITY_POOL);
 
-        JOE.approve(address(SJoeStaking), amounts[0] + excess);
-        JOE.approve(address(VeJoeStaking), amounts[1]);
+        //JOE.approve(address(SJoeStaking), amounts[0] + excess);
+        //JOE.approve(address(VeJoeStaking), amounts[1]);
 
         SJoeStaking.deposit(amounts[0] + excess);
         VeJoeStaking.deposit(amounts[1]);
@@ -194,9 +200,6 @@ contract FrankTreasury is Ownable {
         JOE.safeTransferFrom(_sender, address(this), _amount);
 
         uint256[] memory amounts = proportionDivide(_amount, strategy.DISTRIBUTION_BONDED_JOE);
-
-        JOE.approve(address(SJoeStaking), amounts[0]);
-        JOE.approve(address(VeJoeStaking), amounts[1]);
         
         SJoeStaking.deposit(amounts[0]);
         VeJoeStaking.deposit(amounts[1]);
@@ -220,7 +223,7 @@ contract FrankTreasury is Ownable {
         path[0] = address(JOE);
         path[1] = otherToken;
 
-        JOE.approve(address(TraderJoeRouter), safeAmount);
+        //JOE.approve(address(TraderJoeRouter), safeAmount);
 
         uint256 amountOutOther = TraderJoeRouter.swapExactTokensForTokens(safeAmount, (TraderJoeRouter.getAmountsOut(safeAmount, path)[1]) * slippage / 1000, path, address(this), block.timestamp + 2000)[1];
 
@@ -232,7 +235,7 @@ contract FrankTreasury is Ownable {
 
         uint quoteJOE = TraderJoeRouter.quote(amountOutOther, reserveOther, reserveJOE);
 
-        JOE.approve(address(TraderJoeRouter), quoteJOE);
+        //JOE.approve(address(TraderJoeRouter), quoteJOE);
         IERC20(otherToken).approve(address(TraderJoeRouter), amountOutOther);
 
         (, uint256 amountInJoe, ) = TraderJoeRouter.addLiquidity(otherToken, address(JOE), amountOutOther, quoteJOE, 0, 0, address(this), block.timestamp + 1000);
@@ -335,6 +338,7 @@ contract FrankTreasury is Ownable {
         uint256 JOEAmount = _removeLiquidity(_amount, _previousPool);
         uint256 excess = _addAndFarmLiquidity(JOEAmount, _newPool);
 
+        //JOE.approve(address(SJoeStaking), excess);
         SJoeStaking.deposit(excess);
     }
 
