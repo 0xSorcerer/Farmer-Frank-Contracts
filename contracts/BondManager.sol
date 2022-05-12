@@ -197,13 +197,21 @@ contract BondManager is Ownable, BondDiscountable {
 
     struct User {
         uint256 unweightedShares;
+        uint256 baseUnweightedShares;
         uint256 weightedShares;
+        uint256 baseWeightedShares;
         uint256 shareDebt;
         uint256 rewardDebt;
+        uint256 index;
         uint256 XP;
     }
 
     uint256 public index = STRONG_PRECISION;
+
+    uint256 public totalOutstandingUS;
+    uint256 public totalOutstandingWS;
+    uint256 public totalCirculatingUS;
+    uint256 public totalCirculatingWS;
 
     mapping(address => User) public users ;
 
@@ -278,8 +286,18 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 unweightedShares = (bondLevels[levelID].price * 1e5) * amount;
         uint256 weightedShares = (bondLevels[levelID].price * 1e3) * amount * bondLevels[levelID].weight;
 
+        if(users[sender].index == 0) {
+            users[sender].index = 1e23;
+        } else {
+            users[sender].index = (users[sender].baseUnweightedShares * users[sender].index  / STRONG_PRECISION + unweightedShares) * STRONG_PRECISION / ((users[sender].baseUnweightedShares + unweightedShares));
+            
+        }
+
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
+
+        users[sender].baseUnweightedShares += unweightedShares;
+        users[sender].baseWeightedShares += weightedShares;
 
         users[sender].unweightedShares += unweightedShares;
         users[sender].weightedShares += weightedShares;
@@ -304,20 +322,24 @@ contract BondManager is Ownable, BondDiscountable {
 
         index = (index * (((issuedShares * 1e5) * STRONG_PRECISION / totalUnweightedShares) + 1e23)) / STRONG_PRECISION;
 
-        uint256 weight = (totalWeightedShares * STRONG_PRECISION / totalUnweightedShares);
-
-        totalUnweightedShares += issuedShares * 1e5;
-        totalWeightedShares += (issuedRewards * 1e5) * weight / STRONG_PRECISION;
+        //uint256 weight = (totalWeightedShares * STRONG_PRECISION / totalUnweightedShares);
+        //totalUnweightedShares += issuedShares * 1e5;
+        //totalWeightedShares += (issuedRewards * 1e5) * weight / STRONG_PRECISION;
 
         emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
+    }
+
+    function getUserShares(address user) public view returns (uint256 unweightedShares, uint256 weightedShares) {
+        unweightedShares = users[user].baseUnweightedShares * users[user].index / STRONG_PRECISION;
+
+        uint256 weight = users[user].baseWeightedShares * STRONG_PRECISION / users[user].baseUnweightedShares;
+        weightedShares = unweightedShares * weight / STRONG_PRECISION;
     }
 
     function getClaimableAmounts(address user) public view returns (uint256 claimableShares, uint256 claimableRewards) {
         claimableShares = (users[user].unweightedShares * accSharesPerUS / STRONG_PRECISION) - users[user].shareDebt;
         claimableRewards = (users[user].weightedShares * accRewardsPerWS / STRONG_PRECISION) - users[user].rewardDebt;
     }
-
-    
 
     function claim() external {
         address user = _msgSender();
@@ -330,11 +352,13 @@ contract BondManager is Ownable, BondDiscountable {
         users[user].unweightedShares += claimableShares;
         users[user].weightedShares += (claimableShares * userWeight / STRONG_PRECISION);
 
+        users[user].index = ((((users[user].index * users[user].baseUnweightedShares) / STRONG_PRECISION) + claimableShares) * STRONG_PRECISION / users[user].baseUnweightedShares);
+
         users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / STRONG_PRECISION;
         users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / STRONG_PRECISION;
 
-        //totalUnweightedShares += claimableShares;
-        //totalWeightedShares += (claimableShares * userWeight / STRONG_PRECISION);
+        totalUnweightedShares += claimableShares;
+        totalWeightedShares += (claimableShares * userWeight / STRONG_PRECISION);
 
         baseToken.safeTransfer(user, (claimableRewards / 1e5));
     }
