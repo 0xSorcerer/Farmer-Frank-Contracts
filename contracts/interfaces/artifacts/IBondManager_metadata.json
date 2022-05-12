@@ -1,0 +1,825 @@
+{
+	"compiler": {
+		"version": "0.8.7+commit.e28d00a7"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [],
+				"name": "accRewardsPerWS",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "accSharesPerUS",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					},
+					{
+						"internalType": "uint256",
+						"name": "index",
+						"type": "uint256"
+					}
+				],
+				"name": "activateBondLevel",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "name",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "weight",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxSupply",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					}
+				],
+				"name": "addBondLevel",
+				"outputs": [
+					{
+						"internalType": "bytes4",
+						"name": "",
+						"type": "bytes4"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "name",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "weight",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxSupply",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "index",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					}
+				],
+				"name": "addBondLevelAtIndex",
+				"outputs": [
+					{
+						"internalType": "bytes4",
+						"name": "",
+						"type": "bytes4"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "baseToken",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256[]",
+						"name": "bondIDs",
+						"type": "uint256[]"
+					}
+				],
+				"name": "batchClaim",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "bond",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					},
+					{
+						"internalType": "string",
+						"name": "name",
+						"type": "string"
+					},
+					{
+						"internalType": "uint256",
+						"name": "weight",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "maxSupply",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					}
+				],
+				"name": "changeBondLevel",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "bondID",
+						"type": "uint256"
+					}
+				],
+				"name": "claim",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "claimAll",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					},
+					{
+						"internalType": "uint256",
+						"name": "amount",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bytes32[]",
+						"name": "merkleProof",
+						"type": "bytes32[]"
+					}
+				],
+				"name": "createMultipleBondsWithTokens",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					}
+				],
+				"name": "deactivateBondLevel",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "deactivateDiscount",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "issuedRewards",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "issuedShares",
+						"type": "uint256"
+					}
+				],
+				"name": "depositRewards",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getActiveBondLevels",
+				"outputs": [
+					{
+						"internalType": "bytes4[]",
+						"name": "",
+						"type": "bytes4[]"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					}
+				],
+				"name": "getBondLevel",
+				"outputs": [
+					{
+						"components": [
+							{
+								"internalType": "bytes4",
+								"name": "levelID",
+								"type": "bytes4"
+							},
+							{
+								"internalType": "bool",
+								"name": "active",
+								"type": "bool"
+							},
+							{
+								"internalType": "uint256",
+								"name": "weight",
+								"type": "uint256"
+							},
+							{
+								"internalType": "uint256",
+								"name": "maxSupply",
+								"type": "uint256"
+							},
+							{
+								"internalType": "string",
+								"name": "name",
+								"type": "string"
+							},
+							{
+								"internalType": "uint256",
+								"name": "price",
+								"type": "uint256"
+							}
+						],
+						"internalType": "struct IBondManager.BondLevel",
+						"name": "",
+						"type": "tuple"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "bondID",
+						"type": "uint256"
+					}
+				],
+				"name": "getClaimableAmounts",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "claimableShares",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "claimableRewards",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getDiscountUpdateFactor",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "updateFactor",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					}
+				],
+				"name": "getPrice",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					}
+				],
+				"name": "getUserXP",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "index",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "isDiscountActive",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "isDiscountPlanned",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "isDiscountWhitelisted",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "whitelisted",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "isSaleActive",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "linkBondManager",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "owner",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "bytes4",
+						"name": "levelID",
+						"type": "bytes4"
+					},
+					{
+						"internalType": "uint256",
+						"name": "index",
+						"type": "uint256"
+					}
+				],
+				"name": "rearrangeBondLevel",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "renounceOwnership",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "string",
+						"name": "baseURI",
+						"type": "string"
+					}
+				],
+				"name": "setBaseURI",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_treasury",
+						"type": "address"
+					}
+				],
+				"name": "setTreasury",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "amount",
+						"type": "uint256"
+					},
+					{
+						"internalType": "address",
+						"name": "user",
+						"type": "address"
+					}
+				],
+				"name": "setUserXP",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "startAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint16",
+						"name": "discountRate",
+						"type": "uint16"
+					},
+					{
+						"internalType": "uint240",
+						"name": "updateFrequency",
+						"type": "uint240"
+					},
+					{
+						"internalType": "uint256[]",
+						"name": "purchaseLimit",
+						"type": "uint256[]"
+					}
+				],
+				"name": "startDiscountAt",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "startIn",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endIn",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint16",
+						"name": "discountRate",
+						"type": "uint16"
+					},
+					{
+						"internalType": "uint240",
+						"name": "updateFrequency",
+						"type": "uint240"
+					},
+					{
+						"internalType": "uint256[]",
+						"name": "purchaseLimit",
+						"type": "uint256[]"
+					}
+				],
+				"name": "startDiscountIn",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "startAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endWhitelistAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endAt",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "merkleRoot",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint16",
+						"name": "discountRate",
+						"type": "uint16"
+					},
+					{
+						"internalType": "uint240",
+						"name": "updateFrequency",
+						"type": "uint240"
+					},
+					{
+						"internalType": "uint256[]",
+						"name": "purchaseLimit",
+						"type": "uint256[]"
+					}
+				],
+				"name": "startWhitelistedDiscountAt",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "startIn",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endWhitelistIn",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "endIn",
+						"type": "uint256"
+					},
+					{
+						"internalType": "bytes32",
+						"name": "merkleRoot",
+						"type": "bytes32"
+					},
+					{
+						"internalType": "uint16",
+						"name": "discountRate",
+						"type": "uint16"
+					},
+					{
+						"internalType": "uint240",
+						"name": "updateFrequency",
+						"type": "uint240"
+					},
+					{
+						"internalType": "uint256[]",
+						"name": "purchaseLimit",
+						"type": "uint256[]"
+					}
+				],
+				"name": "startWhitelistedDiscountIn",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "toggleSale",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "totalUnweightedShares",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "totalWeightedShares",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "newOwner",
+						"type": "address"
+					}
+				],
+				"name": "transferOwnership",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "treasury",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/interfaces/IBondManager.sol": "IBondManager"
+		},
+		"evmVersion": "london",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/interfaces/IBondManager.sol": {
+			"keccak256": "0x8c1f5cf098026fb3b447b67826eb3b24976107b37cf5f77d511afae10ce23795",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://66a6883e5262733a66b613ab51ec666c1b83f7e336077871bc6ac1f10c0ccac6",
+				"dweb:/ipfs/QmZQvBvT2zH2qGAATC77w3ZDP6f6dZoNqrMhDp3hqusPtg"
+			]
+		}
+	},
+	"version": 1
+}

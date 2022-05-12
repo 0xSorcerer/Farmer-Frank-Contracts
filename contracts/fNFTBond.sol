@@ -44,10 +44,12 @@ contract fNFTBond is ERC721, Ownable {
         uint256 index;
     }
 
-    IBondManager public BondManager;
-
     uint256 private constant GLOBAL_PRECISION = 10**18;
     uint256 private constant WEIGHT_PRECISION = 100;
+
+    uint256 private STRONG_PRECISION = 10e25;
+
+    IBondManager public bondManager;
 
     mapping(uint256 => Bond) private bonds; 
 
@@ -63,8 +65,18 @@ contract fNFTBond is ERC721, Ownable {
         _;
     }
 
+    function setBondManager(address manager) external {
+        bondManager = IBondManager(manager);
+    }
+
     function getBond(uint256 bondID) external view onlyIfExists(bondID) returns (Bond memory bond) {
         bond = bonds[bondID];
+    }
+
+    function getBondShares(uint256 bondID) external view onlyIfExists(bondID) returns (uint256 unweightedShares, uint256 weightedShares) {
+        uint256 x = bondManager.index() * STRONG_PRECISION / bonds[bondID].index;
+        unweightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * 1e5 * x / STRONG_PRECISION;
+        weightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * 1e5 * x * bondManager.getBondLevel(bonds[bondID].levelID).weight / 1e25;
     }  
 
     function getBondsIDsOf(address user) external view returns (uint256[] memory) {
@@ -95,13 +107,7 @@ contract fNFTBond is ERC721, Ownable {
         return string(abi.encodePacked("0x", converted));
     }
 
-    function linkBondManager(address bondManager) external onlyOwner {
-        require(bondManager != address(0), "fNFT Bond: Bond manager can't be set to the 0 address.");
-        BondManager = IBondManager(bondManager);
-    }
-
-    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount) onlyOwner external {
-        require(address(BondManager) != address(0), "fNFT Bond: BondManager isn't set.");
+    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount) external {
 
         for (uint i = 0; i < amount; i++) {
             uint256 bondID = totalSupply();
@@ -164,4 +170,6 @@ contract fNFTBond is ERC721, Ownable {
 
         _transfer(from, to, tokenId);
     }
+
+        
 }

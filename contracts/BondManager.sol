@@ -169,8 +169,6 @@ contract BondManager is Ownable, BondDiscountable {
 
     IERC20 public baseToken;
 
-    IFrankTreasury public treasury;
-
     uint256 public totalUnweightedShares;
     uint256 public totalWeightedShares;
 
@@ -184,6 +182,9 @@ contract BondManager is Ownable, BondDiscountable {
 
     uint256 private constant MAX_BOND_LEVELS = 10;
 
+    uint256 public STANDARD_PRECISION  = 1e18;
+    uint256 public STRONG_PRECISION  = 1e23;
+
     bytes4[] private activeBondLevels;
 
     mapping(bytes4 => BondLevel) private bondLevels;
@@ -192,16 +193,19 @@ contract BondManager is Ownable, BondDiscountable {
 
     mapping(address => uint256) private userXP;
 
+    uint fixedPrecision = 5;
+
     struct User {
         uint256 unweightedShares;
         uint256 weightedShares;
         uint256 shareDebt;
         uint256 rewardDebt;
+        uint256 XP;
     }
 
-    uint256 index = 10 ** 18;
+    uint256 public index = STRONG_PRECISION;
 
-    mapping(address => User) users;
+    mapping(address => User) public users ;
 
     event DISCOUNT_CREATED (uint256 indexed discountIndex, uint256 startTime, uint256 endTime, uint16 discountRate, bool whitelist);
 
@@ -224,18 +228,115 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 issuedShares
     );
 
-    constructor(address _bond, address _baseToken, address _treasury) {
+    constructor(address _bond, address _baseToken) {
         require(_bond != address(0));
         require(_baseToken != address(0));
 
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
-        setTreasury(_treasury);
 
         addBondLevelAtIndex("Level I", 100, 0, activeBondLevels.length, SafeMath.mul(10, GLOBAL_PRECISION));
         addBondLevelAtIndex("Level II", 105, 0, activeBondLevels.length, SafeMath.mul(100, GLOBAL_PRECISION));
         addBondLevelAtIndex("Level III", 110, 0, activeBondLevels.length, SafeMath.mul(1000, GLOBAL_PRECISION));
         addBondLevelAtIndex("Level IV", 115, 0, activeBondLevels.length, SafeMath.mul(5000, GLOBAL_PRECISION));
+    }
+
+
+    function createMultipleBondsWithTokens(bytes4 levelID, uint256 amount, bytes32[] calldata merkleProof) public {
+        require(isSaleActive, "Bond Manager: Bond sale is inactive.");
+        require(amount > 0 && amount <= 20, "Bond Manager: Invalid amount to mint.");
+        require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
+
+        address sender = _msgSender();
+        require(sender != address(0), "Bond Manager: Creation to the zero address is prohibited.");
+
+        if(bondLevels[levelID].maxSupply != 0) {
+            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
+            bondsSold[levelID] += amount;
+        }
+
+        (uint256 bondPrice, bool discountActive) = getPrice(levelID);
+
+        if(discountActive) { 
+            if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
+                bytes32 leaf = keccak256(abi.encodePacked(sender));
+                require(MerkleProof.verify(merkleProof, discount[discountIndex].merkleRoot, leaf), "Bond Manager: You are not whitelisted.");
+            }
+
+            uint256 updateFactor = getDiscountUpdateFactor();
+            uint256 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], amount));
+            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "Bond Manager: Too many bonds minted during this price update period.");
+
+            discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
+        }
+
+        require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
+
+        //treasury.bondDeposit(bondPrice * amount, sender);
+
+        // Gets it to string precision
+        uint256 unweightedShares = (bondLevels[levelID].price * 1e5) * amount;
+        uint256 weightedShares = (bondLevels[levelID].price * 1e3) * amount * bondLevels[levelID].weight;
+
+        totalUnweightedShares += unweightedShares;
+        totalWeightedShares += weightedShares;
+
+        users[sender].unweightedShares += unweightedShares;
+        users[sender].weightedShares += weightedShares;
+        users[sender].shareDebt = unweightedShares * accSharesPerUS / STRONG_PRECISION;
+        users[sender].rewardDebt = weightedShares * accRewardsPerWS / STRONG_PRECISION;
+        users[sender].XP += bondLevels[levelID].price;
+
+        bond.mintBonds(sender, levelID, index, amount);
+    }
+
+    function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
+        //require(_msgSender() == address(treasury));
+
+        baseToken.transferFrom(_msgSender(), address(this), issuedRewards);
+
+        // Increase accumulated shares and rewards.
+
+        // issuedRewards and issuedShares are 10e18 now, they must be 10e23
+
+        accSharesPerUS += (issuedShares * 1e5) * STRONG_PRECISION / totalUnweightedShares;
+        accRewardsPerWS += (issuedRewards * 1e5) * STRONG_PRECISION / totalWeightedShares;
+
+        index = (index * (((issuedShares * 1e5) * STRONG_PRECISION / totalUnweightedShares) + 1e23)) / STRONG_PRECISION;
+
+        uint256 weight = (totalWeightedShares * STRONG_PRECISION / totalUnweightedShares);
+
+        totalUnweightedShares += issuedShares * 1e5;
+        totalWeightedShares += (issuedRewards * 1e5) * weight / STRONG_PRECISION;
+
+        emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
+    }
+
+    function getClaimableAmounts(address user) public view returns (uint256 claimableShares, uint256 claimableRewards) {
+        claimableShares = (users[user].unweightedShares * accSharesPerUS / STRONG_PRECISION) - users[user].shareDebt;
+        claimableRewards = (users[user].weightedShares * accRewardsPerWS / STRONG_PRECISION) - users[user].rewardDebt;
+    }
+
+    
+
+    function claim() external {
+        address user = _msgSender();
+
+        (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(user);
+        require((claimableShares != 0 || claimableRewards != 0));
+
+        uint256 userWeight = (users[user].weightedShares * STRONG_PRECISION / users[user].unweightedShares);
+        
+        users[user].unweightedShares += claimableShares;
+        users[user].weightedShares += (claimableShares * userWeight / STRONG_PRECISION);
+
+        users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / STRONG_PRECISION;
+        users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / STRONG_PRECISION;
+
+        //totalUnweightedShares += claimableShares;
+        //totalWeightedShares += (claimableShares * userWeight / STRONG_PRECISION);
+
+        baseToken.safeTransfer(user, (claimableRewards / 1e5));
     }
 
     function getActiveBondLevels() public view returns (bytes4[] memory) {
@@ -270,11 +371,6 @@ contract BondManager is Ownable, BondDiscountable {
         claimableRewards = (_bond.weightedShares * accRewardsPerWS / GLOBAL_PRECISION) - _bond.rewardDebt;
     }
     */
-
-    function setTreasury(address _treasury) public onlyOwner {
-        require(_treasury != address(0));
-        treasury = IFrankTreasury(_treasury);
-    }
 
     function startDiscountAt(uint256 startAt, uint256 endAt, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         _startDiscount(startAt, endAt, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
@@ -464,18 +560,6 @@ contract BondManager is Ownable, BondDiscountable {
     }
     */
 
-    function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
-        require(_msgSender() == address(treasury));
-
-        baseToken.transferFrom(address(treasury), address(this), issuedRewards);
-
-        // Increase accumulated shares and rewards.
-        accSharesPerUS += issuedShares * GLOBAL_PRECISION / totalUnweightedShares;
-        accRewardsPerWS += issuedRewards * GLOBAL_PRECISION / totalWeightedShares;
-
-        emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
-    }
-
 /*
     function _claim(uint256 bondID, address sender) internal {
         (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(bondID);
@@ -543,4 +627,36 @@ contract BondManager is Ownable, BondDiscountable {
     function setBaseURI(string memory baseURI) external onlyOwner {
         return bond.setBaseURI(baseURI);
     }
+
+    function toFixed(uint256 number, uint n) public view returns (uint256) {
+
+        if (number == 0) {
+            return 0;
+        }
+
+        uint precision = 23;
+        uint length = numDigits(number);
+        
+        uint x;
+
+        if(length < precision) {
+           x = length - ( n - (precision - length)) ;
+        } else {
+            x = (length - ((length - precision) + n));
+        }
+        
+        return number / 10 ** x * 10 ** x;
+    }
+
+    function numDigits(uint number) public view returns (uint8) {
+            uint8 digits = 0;
+            //if (number < 0) digits = 1; // enable this line if '-' counts as a digit
+            while (number != 0) {
+                number /= 10;
+                digits++;
+            }
+        return digits;
+    }
+
+    
 }

@@ -13,6 +13,8 @@ interface IBondManager {
         uint256 price;
     }
 
+    function index() external view returns (uint256);
+
     function owner() external view returns (address);
 
     function renounceOwnership() external;

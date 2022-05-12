@@ -58,7 +58,7 @@ module.exports = {
     },
 
     congruity: {
-      provider: () => new HDWalletProvider(env.AVAX_PRIVATE_KEY, `http://127.0.0.1:8545`),
+      provider: () => new HDWalletProvider(env.CONGRUITY, `http://127.0.0.1:8545`),
       network_id: 21298, // Ropsten's id
       gas: 8000000, // Ropsten has a lower block limit than mainnet,
       confirmations: 0, // # of confs to wait between deployments. (default: 0)
