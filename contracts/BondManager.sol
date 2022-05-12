@@ -170,9 +170,6 @@ contract BondManager is Ownable, BondDiscountable {
 
     IERC20 public baseToken;
 
-    uint256 public totalUnweightedShares;
-    uint256 public totalWeightedShares;
-
     uint256 public accRewardsPerWS = 0;
     uint256 public accSharesPerUS = 0;
 
@@ -283,9 +280,6 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 unweightedShares = bondLevels[levelID].price * amount;
         uint256 weightedShares = bondLevels[levelID].price * amount * bondLevels[levelID].weight / 100;
 
-        totalUnweightedShares += unweightedShares;
-        totalWeightedShares += weightedShares;
-
         totalOutstandingUS += unweightedShares;
         totalOutstandingWS += weightedShares;
         totalCirculatingUS += unweightedShares;
@@ -309,12 +303,12 @@ contract BondManager is Ownable, BondDiscountable {
 
         // issuedRewards and issuedShares are 10e18 now, they must be 10e23
 
-        accSharesPerUS += issuedShares * PRECISION / totalUnweightedShares;
-        accRewardsPerWS += issuedRewards * PRECISION / totalWeightedShares;
+        accSharesPerUS += issuedShares * PRECISION / totalCirculatingUS;
+        accRewardsPerWS += issuedRewards * PRECISION / totalCirculatingWS;
 
         index = (index * ((issuedShares * PRECISION / totalOutstandingUS) + PRECISION)) / PRECISION;
 
-        uint256 weight = (totalWeightedShares * PRECISION / totalUnweightedShares);
+        uint256 weight = (totalCirculatingWS * PRECISION / totalCirculatingUS);
 
         totalOutstandingUS += issuedShares;
         totalOutstandingWS += issuedRewards * weight / PRECISION;
@@ -371,8 +365,8 @@ contract BondManager is Ownable, BondDiscountable {
         users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / PRECISION;
         users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / PRECISION;
 
-        totalUnweightedShares += claimableShares;
-        totalWeightedShares += (claimableShares * userWeight / PRECISION);
+        totalCirculatingUS += claimableShares;
+        totalCirculatingWS += (claimableShares * userWeight / PRECISION);
 
         baseToken.safeTransfer(user, claimableRewards);
     }
