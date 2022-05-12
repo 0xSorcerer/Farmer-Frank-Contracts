@@ -44,7 +44,7 @@ contract fNFTBond is ERC721, Ownable {
         uint256 index;
     }
 
-    uint256 private constant GLOBAL_PRECISION = 10**18;
+    uint256 private constant PRECISION = 10**18;
     uint256 private constant WEIGHT_PRECISION = 100;
 
     uint256 private STRONG_PRECISION = 10e25;
@@ -74,9 +74,9 @@ contract fNFTBond is ERC721, Ownable {
     }
 
     function getBondShares(uint256 bondID) external view onlyIfExists(bondID) returns (uint256 unweightedShares, uint256 weightedShares) {
-        uint256 x = bondManager.index() * STRONG_PRECISION / bonds[bondID].index;
-        unweightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * 1e5 * x / STRONG_PRECISION;
-        weightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * 1e5 * x * bondManager.getBondLevel(bonds[bondID].levelID).weight / 1e25;
+        uint256 x = bondManager.index() * PRECISION / bonds[bondID].index;
+        unweightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * x / PRECISION;
+        weightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * x * bondManager.getBondLevel(bonds[bondID].levelID).weight / 1e20;
     }  
 
     function getBondsIDsOf(address user) external view returns (uint256[] memory) {
