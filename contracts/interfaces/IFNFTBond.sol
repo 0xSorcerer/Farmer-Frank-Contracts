@@ -25,4 +25,6 @@ interface IFNFTBond {
     function claim(address user, uint256 bondID, uint256 issuedRewards, uint256 issuedShares) external;
 
     function setBaseURI(string memory baseURI) external;
+
+    function getBondShares(uint256 bondID) external view returns (uint256 unweightedShares, uint256 weightedShares);
 }

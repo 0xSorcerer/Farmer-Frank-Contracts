@@ -96,4 +96,6 @@ interface IBondManager {
     function setUserXP(uint256 amount, address user) external;
 
     function setBaseURI(string memory baseURI) external;
+
+    function dataTransfer(address from, address to, uint256 bondID) external;
 }

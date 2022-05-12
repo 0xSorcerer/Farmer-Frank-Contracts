@@ -138,6 +138,8 @@ contract fNFTBond is ERC721, Ownable {
         }
         */
 
+
+        bondManager.dataTransfer(from, to, tokenId);
         _safeTransfer(from, to, tokenId, _data);
     }
 
@@ -153,6 +155,7 @@ contract fNFTBond is ERC721, Ownable {
         }
         */
 
+        bondManager.dataTransfer(from, to, tokenId);
         _safeTransfer(from, to, tokenId, "");
     }
 
@@ -168,6 +171,7 @@ contract fNFTBond is ERC721, Ownable {
         }
         */
 
+        bondManager.dataTransfer(from, to, tokenId);
         _transfer(from, to, tokenId);
     }
 

@@ -10,6 +10,7 @@ import "./interfaces/IERC20.sol";
 import "./libraries/SafeERC20.sol";
 import "./libraries/SafeMath.sol";
 import "./interfaces/IFrankTreasury.sol";
+import "./interfaces/IERC721.sol";
 import "./other/MerkleProof.sol";
 
 /// @title Contract that deals with the discounting of fNFT Bonds. 
@@ -196,12 +197,9 @@ contract BondManager is Ownable, BondDiscountable {
 
     struct User {
         uint256 unweightedShares;
-        uint256 baseUnweightedShares;
         uint256 weightedShares;
-        uint256 baseWeightedShares;
         uint256 shareDebt;
         uint256 rewardDebt;
-        uint256 index;
         uint256 XP;
     }
 
@@ -285,13 +283,6 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 unweightedShares = bondLevels[levelID].price * amount;
         uint256 weightedShares = bondLevels[levelID].price * amount * bondLevels[levelID].weight / 100;
 
-        if(users[sender].index == 0) {
-            users[sender].index = PRECISION;
-        } else {
-            users[sender].index = (users[sender].baseUnweightedShares * users[sender].index  / PRECISION + unweightedShares) * PRECISION / ((users[sender].baseUnweightedShares + unweightedShares));
-            
-        }
-
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
@@ -299,9 +290,6 @@ contract BondManager is Ownable, BondDiscountable {
         totalOutstandingWS += weightedShares;
         totalCirculatingUS += unweightedShares;
         totalCirculatingWS += unweightedShares;
-
-        users[sender].baseUnweightedShares += unweightedShares;
-        users[sender].baseWeightedShares += weightedShares;
 
         users[sender].unweightedShares += unweightedShares;
         users[sender].weightedShares += weightedShares;
@@ -338,30 +326,47 @@ contract BondManager is Ownable, BondDiscountable {
         emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
     }
 
-    function getUserShares(address user) public view returns (uint256 unweightedShares, uint256 weightedShares) {
-        unweightedShares = users[user].baseUnweightedShares * users[user].index / PRECISION;
-
-        uint256 weight = users[user].baseWeightedShares * PRECISION / users[user].baseUnweightedShares;
-        weightedShares = unweightedShares * weight / PRECISION;
-    }
-
     function getClaimableAmounts(address user) public view returns (uint256 claimableShares, uint256 claimableRewards) {
         claimableShares = (users[user].unweightedShares * accSharesPerUS / PRECISION) - users[user].shareDebt;
         claimableRewards = (users[user].weightedShares * accRewardsPerWS / PRECISION) - users[user].rewardDebt;
     }
 
-    function claim() external {
-        address user = _msgSender();
+    function dataTransfer(address from, address to, uint256 bondID) public {
+        (uint256 unweightedShares, uint256 weightedShares) = bond.getBondShares(bondID);
+
+        claim(from);
+        claim(to);
+
+        if (IERC721(address(bond)).balanceOf(from) == 1) {
+            users[from].unweightedShares = 0;
+            users[from].weightedShares = 0;
+            users[from].shareDebt = 0;
+            users[from].rewardDebt = 0;
+        } else {
+            users[from].unweightedShares -= unweightedShares;
+            users[from].weightedShares -= weightedShares;
+            users[from].shareDebt = users[from].unweightedShares * accSharesPerUS / PRECISION;
+            users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
+        }
+
+        users[to].unweightedShares += unweightedShares;
+        users[to].weightedShares += weightedShares;
+        users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
+        users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
+    }
+
+    function claim(address user) public {
 
         (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(user);
-        require((claimableShares != 0 || claimableRewards != 0));
+        
+        if(claimableShares == 0 && claimableRewards == 0) {
+            return;
+        }
 
         uint256 userWeight = (users[user].weightedShares * PRECISION / users[user].unweightedShares);
         
         users[user].unweightedShares += claimableShares;
         users[user].weightedShares += (claimableShares * userWeight / PRECISION);
-
-        users[user].index = ((((users[user].index * users[user].baseUnweightedShares) / PRECISION) + claimableShares) * PRECISION / users[user].baseUnweightedShares);
 
         users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / PRECISION;
         users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / PRECISION;
