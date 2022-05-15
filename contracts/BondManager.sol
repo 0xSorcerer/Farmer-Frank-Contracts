@@ -198,6 +198,7 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 shareDebt;
         uint256 rewardDebt;
         uint256 XP;
+        uint256 index;
     }
 
     uint256 public index = PRECISION;
@@ -285,13 +286,17 @@ contract BondManager is Ownable, BondDiscountable {
         totalCirculatingUS += unweightedShares;
         totalCirculatingWS += unweightedShares;
 
+        if(users[sender].index == 0) {
+            users[sender].index = 1e18;
+        }
+
         users[sender].unweightedShares += unweightedShares;
         users[sender].weightedShares += weightedShares;
         users[sender].shareDebt = users[sender].unweightedShares * accSharesPerUS / PRECISION;
         users[sender].rewardDebt = users[sender].weightedShares * accRewardsPerWS / PRECISION;
         users[sender].XP += bondLevels[levelID].price;
 
-        bond.mintBonds(sender, levelID, index, amount);
+        bond.mintBonds(sender, levelID, users[sender].index, amount);
         
     }
 
@@ -327,7 +332,8 @@ contract BondManager is Ownable, BondDiscountable {
     }
 
     function dataTransfer(address from, address to, uint256 bondID) public {
-        (uint256 unweightedShares, uint256 weightedShares) = bond.getBondShares(bondID);
+        //(uint256 unweightedShares, uint256 weightedShares) = bond.getBondShares(bondID);
+        uint256 unweightedShares = getBondShares(bondID);
 
         claim(from);
         claim(to);
@@ -338,30 +344,42 @@ contract BondManager is Ownable, BondDiscountable {
             users[from].shareDebt = 0;
             users[from].rewardDebt = 0;
             users[from].XP = 0;
+            users[from].index = 1e18;
         } else {
             users[from].unweightedShares -= unweightedShares;
-            users[from].weightedShares -= weightedShares;
+            //users[from].weightedShares -= weightedShares;
             users[from].shareDebt = users[from].unweightedShares * accSharesPerUS / PRECISION;
             users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
             users[from].XP = users[from].XP - getBondLevel(bond.getBond(bondID).levelID).price;
         }
 
         users[to].unweightedShares += unweightedShares;
-        users[to].weightedShares += weightedShares;
+        //users[to].weightedShares += weightedShares;
         users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
         users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
         users[to].XP = users[to].XP + getBondLevel(bond.getBond(bondID).levelID).price;
+
+        uint256 previousIndex = users[from].index * GLOBAL_PRECISION / bond.getBond(bondID).index;
+        uint256 newIndex = users[to].index * GLOBAL_PRECISION / previousIndex;
+
+        bond.setBondIndex(bondID, newIndex);
     }
 
     function claim(address user) public {
 
         (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(user);
+
+        if(users[user].index == 0) {
+            users[user].index = 1e18;
+        }
         
         if(claimableShares == 0 && claimableRewards == 0) {
             return;
         }
 
         uint256 userWeight = (users[user].weightedShares * PRECISION / users[user].unweightedShares);
+
+        users[user].index = (users[user].index * ((claimableShares * GLOBAL_PRECISION / users[user].unweightedShares) + GLOBAL_PRECISION)) / GLOBAL_PRECISION;
         
         users[user].unweightedShares += claimableShares;
         users[user].weightedShares += (claimableShares * userWeight / PRECISION);
@@ -373,6 +391,11 @@ contract BondManager is Ownable, BondDiscountable {
         totalCirculatingWS += (claimableShares * userWeight / PRECISION);
 
         baseToken.safeTransfer(user, claimableRewards);
+    }
+
+    function getBondShares(uint256 bondID) public view returns (uint256) {
+        address bondOwner = IERC721(address(bond)).ownerOf(bondID);
+        return (users[bondOwner].index * GLOBAL_PRECISION / bond.getBond(bondID).index * getBondLevel(bond.getBond(bondID).levelID).price) / GLOBAL_PRECISION;
     }
 
     function getActiveBondLevels() public view returns (bytes4[] memory) {

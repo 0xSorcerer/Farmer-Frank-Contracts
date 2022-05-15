@@ -126,6 +126,10 @@ contract fNFTBond is ERC721, Ownable {
         _setBaseURI(baseURI);
     }
 
+    function setBondIndex(uint256 bondID, uint256 index) external onlyOwner {
+        bonds[bondID].index = index;
+    }
+
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory _data) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 

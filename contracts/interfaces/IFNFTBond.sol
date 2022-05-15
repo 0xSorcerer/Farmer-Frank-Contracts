@@ -27,4 +27,6 @@ interface IFNFTBond {
     function setBaseURI(string memory baseURI) external;
 
     function getBondShares(uint256 bondID) external view returns (uint256 unweightedShares, uint256 weightedShares);
+
+    function setBondIndex(uint256 bondID, uint256 index) external;
 }
