@@ -129,49 +129,30 @@ contract fNFTBond is ERC721, Ownable {
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory _data) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
-    /*
         if(from != to) {
-            Bond storage _bond = bonds[tokenId];
-            _bond.earned = 0;
-            BondManager.setUserXP(BondManager.getUserXP(from) - BondManager.getBondLevel(bonds[tokenId].levelID).price, from);
-            BondManager.setUserXP(BondManager.getUserXP(to) + BondManager.getBondLevel(bonds[tokenId].levelID).price, to);
+            bondManager.dataTransfer(from, to, tokenId);
         }
-        */
-
-
-        bondManager.dataTransfer(from, to, tokenId);
+        
         _safeTransfer(from, to, tokenId, _data);
     }
 
     function safeTransferFrom(address from, address to, uint256 tokenId) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
-/*
         if(from != to) {
-            Bond storage _bond = bonds[tokenId];
-            _bond.earned = 0;
-            BondManager.setUserXP(BondManager.getUserXP(from) - BondManager.getBondLevel(bonds[tokenId].levelID).price, from);
-            BondManager.setUserXP(BondManager.getUserXP(to) + BondManager.getBondLevel(bonds[tokenId].levelID).price, to);
+            bondManager.dataTransfer(from, to, tokenId);
         }
-        */
-
-        bondManager.dataTransfer(from, to, tokenId);
+        
         _safeTransfer(from, to, tokenId, "");
     }
 
     function transferFrom(address from, address to, uint256 tokenId) public virtual override {
         require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: transfer caller is not owner nor approved");
 
-/*
         if(from != to) {
-            Bond storage _bond = bonds[tokenId];
-            _bond.earned = 0;
-            BondManager.setUserXP(BondManager.getUserXP(from) - BondManager.getBondLevel(bonds[tokenId].levelID).price, from);
-            BondManager.setUserXP(BondManager.getUserXP(to) + BondManager.getBondLevel(bonds[tokenId].levelID).price, to);
+            bondManager.dataTransfer(from, to, tokenId);
         }
-        */
-
-        bondManager.dataTransfer(from, to, tokenId);
+      
         _transfer(from, to, tokenId);
     }
 

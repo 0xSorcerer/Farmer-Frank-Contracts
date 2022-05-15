@@ -6,6 +6,7 @@ const FrankTreasury = artifacts.require('FrankTreasury.sol')
 
 const ERC20 = artifacts.require('ERC20.sol')
 
+
 /*
 module.exports = async (deployer) => {
 
@@ -28,16 +29,15 @@ module.exports = async (deployer) => {
 
 module.exports = async (deployer) => {
 
-    //deployer.deploy(ERC20, "JOE", "JOE")
 
-    
     await deployer.deploy(fNFTBond, "fNFT Bond", "fNFTB")
-    await deployer.deploy(BondManager, fNFTBond.address, "0x202358975315f4c5E210d9b8520104C566BFd5d3")
+    await deployer.deploy(BondManager, fNFTBond.address, "0x88440130Df5C68E3fBea3c6d9dCec8D7cdA11980")
 
     const bond = await fNFTBond.deployed()
 
     await bond.setBondManager(BondManager.address)
     await bond.transferOwnership(BondManager.address)
+    
     
     
 

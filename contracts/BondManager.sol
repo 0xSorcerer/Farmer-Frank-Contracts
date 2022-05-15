@@ -258,7 +258,7 @@ contract BondManager is Ownable, BondDiscountable {
         }
 
         (uint256 bondPrice, bool discountActive) = getPrice(levelID);
-
+        
         if(discountActive) { 
             if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
                 bytes32 leaf = keccak256(abi.encodePacked(sender));
@@ -272,7 +272,7 @@ contract BondManager is Ownable, BondDiscountable {
             discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
         }
 
-        require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
+        //require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
 
         //treasury.bondDeposit(bondPrice * amount, sender);
 
@@ -292,6 +292,7 @@ contract BondManager is Ownable, BondDiscountable {
         users[sender].XP += bondLevels[levelID].price;
 
         bond.mintBonds(sender, levelID, index, amount);
+        
     }
 
     function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
@@ -303,12 +304,12 @@ contract BondManager is Ownable, BondDiscountable {
 
         // issuedRewards and issuedShares are 10e18 now, they must be 10e23
 
-        accSharesPerUS += issuedShares * PRECISION / totalCirculatingUS;
-        accRewardsPerWS += issuedRewards * PRECISION / totalCirculatingWS;
+        accSharesPerUS += issuedShares * PRECISION / totalOutstandingUS;
+        accRewardsPerWS += issuedRewards * PRECISION / totalOutstandingWS;
 
         index = (index * ((issuedShares * PRECISION / totalOutstandingUS) + PRECISION)) / PRECISION;
 
-        uint256 weight = (totalCirculatingWS * PRECISION / totalCirculatingUS);
+        uint256 weight = (totalOutstandingWS * PRECISION / totalOutstandingUS);
 
         totalOutstandingUS += issuedShares;
         totalOutstandingWS += issuedRewards * weight / PRECISION;
@@ -336,17 +337,20 @@ contract BondManager is Ownable, BondDiscountable {
             users[from].weightedShares = 0;
             users[from].shareDebt = 0;
             users[from].rewardDebt = 0;
+            users[from].XP = 0;
         } else {
             users[from].unweightedShares -= unweightedShares;
             users[from].weightedShares -= weightedShares;
             users[from].shareDebt = users[from].unweightedShares * accSharesPerUS / PRECISION;
             users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
+            users[from].XP = users[from].XP - getBondLevel(bond.getBond(bondID).levelID).price;
         }
 
         users[to].unweightedShares += unweightedShares;
         users[to].weightedShares += weightedShares;
         users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
         users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
+        users[to].XP = users[to].XP + getBondLevel(bond.getBond(bondID).levelID).price;
     }
 
     function claim(address user) public {
@@ -395,14 +399,6 @@ contract BondManager is Ownable, BondDiscountable {
             return (price, false);
         }
     }
-/*
-    function getClaimableAmounts(uint256 bondID) public view returns (uint256 claimableShares, uint256 claimableRewards) {
-        IFNFTBond.Bond memory _bond = bond.getBond(bondID);
-
-        claimableShares = (_bond.unweightedShares * accSharesPerUS / GLOBAL_PRECISION) - _bond.shareDebt;
-        claimableRewards = (_bond.weightedShares * accRewardsPerWS / GLOBAL_PRECISION) - _bond.rewardDebt;
-    }
-    */
 
     function startDiscountAt(uint256 startAt, uint256 endAt, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         _startDiscount(startAt, endAt, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
@@ -546,100 +542,6 @@ contract BondManager is Ownable, BondDiscountable {
         isSaleActive = !isSaleActive;
         emit SALE_TOGGLED(isSaleActive);
     }
-    /*
-
-    function createMultipleBondsWithTokens(bytes4 levelID, uint256 amount, bytes32[] calldata merkleProof) public {
-        require(isSaleActive, "Bond Manager: Bond sale is inactive.");
-        require(amount > 0 && amount <= 20, "Bond Manager: Invalid amount to mint.");
-        require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
-
-        address sender = _msgSender();
-        require(sender != address(0), "Bond Manager: Creation to the zero address is prohibited.");
-
-        if(bondLevels[levelID].maxSupply != 0) {
-            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
-            bondsSold[levelID] += amount;
-        }
-
-        (uint256 bondPrice, bool discountActive) = getPrice(levelID);
-
-        if(discountActive) { 
-            if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
-                bytes32 leaf = keccak256(abi.encodePacked(sender));
-                require(MerkleProof.verify(merkleProof, discount[discountIndex].merkleRoot, leaf), "Bond Manager: You are not whitelisted.");
-            }
-
-            uint256 updateFactor = getDiscountUpdateFactor();
-            uint256 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], amount));
-            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "Bond Manager: Too many bonds minted during this price update period.");
-
-            discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
-        }
-
-        require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
-
-        treasury.bondDeposit(bondPrice * amount, sender);
-
-        uint256 unweightedShares = bondPrice;
-        uint256 weightedShares = bondLevels[levelID].price * bondLevels[levelID].weight / WEIGHT_PRECISION;
-
-        totalUnweightedShares += unweightedShares * amount;
-        totalWeightedShares += weightedShares * amount;
-
-        userXP[sender] += bondLevels[levelID].price * amount;
-
-        bond.mintBonds(sender, levelID, amount, weightedShares, unweightedShares);
-    }
-    */
-
-/*
-    function _claim(uint256 bondID, address sender) internal {
-        (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(bondID);
-        require((claimableShares != 0 || claimableRewards != 0));
-
-        // the bond.claim() call below will increase the underlying shares for _bondID, thus we must increment the total number of shares as well.
-        totalUnweightedShares += claimableShares;
-        totalWeightedShares += claimableShares * getBondLevel(bond.getBond(bondID).levelID).weight / WEIGHT_PRECISION;
-
-        // Call fNFT claim function which increments shares and debt for _bondID.
-        bond.claim(sender, bondID, claimableRewards, claimableShares);
-
-        // Send rewards to user.
-        baseToken.safeTransfer(sender, claimableRewards);
-    }
-
-    /// @notice Public implementation of _claim function.
-    /// @param bondID Unique fNFT Bond uint ID.
-    function claim(uint256 bondID) public {
-        _claim(bondID, _msgSender());
-    }
-
-    /// @notice Claim rewards and shares for all Bonds owned by the sender.
-    /// @dev Should the sender own many bonds, the function will fail due to gas constraints.
-    /// Therefore this function will be called from the dAPP only when it verifies that a
-    /// user owns a low / moderate amount of Bonds.
-    function claimAll() public {
-        address sender = _msgSender();
-
-        uint256[] memory bondsIDsOf = bond.getBondsIDsOf(sender);
-
-        for(uint i = 0; i < bondsIDsOf.length; i++) {
-            _claim(bondsIDsOf[i], sender);
-        }
-    }
-
-    /// @notice Claim rewards and shares for Bonds in an array.
-    /// @param bondIDs Array of bondIDs that will claim rewards.
-    /// @dev If the sender owns many Bonds, calling multiple transactions is necessary.
-    /// dAPP will query off-chain (requiring 0 gas) all Bonds IDs owned by the sender.
-    /// It will divide the array in smaller chunks and will call this function multiple
-    /// times until rewards are claimed for all Bonds. 
-    function batchClaim(uint256[] memory bondIDs) public {
-        for(uint i = 0; i < bondIDs.length; i++) {
-            claim(bondIDs[i]);
-        }
-    }
-    */
 
     /// @notice Links this bond manager to the fNFT bond at deployment. 
     function linkBondManager() external onlyOwner {
