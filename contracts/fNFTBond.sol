@@ -73,12 +73,6 @@ contract fNFTBond is ERC721, Ownable {
         bond = bonds[bondID];
     }
 
-    function getBondShares(uint256 bondID) external view onlyIfExists(bondID) returns (uint256 unweightedShares, uint256 weightedShares) {
-        uint256 x = bondManager.index() * PRECISION / bonds[bondID].index;
-        unweightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * x / PRECISION;
-        weightedShares = bondManager.getBondLevel(bonds[bondID].levelID).price * x * bondManager.getBondLevel(bonds[bondID].levelID).weight / 1e20;
-    }  
-
     function getBondsIDsOf(address user) external view returns (uint256[] memory) {
         uint256 _balance = balanceOf(user);
         uint256[] memory IDs = new uint256[](_balance);

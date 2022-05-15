@@ -201,13 +201,6 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 index;
     }
 
-    uint256 public index = PRECISION;
-
-    uint256 public totalOutstandingUS;
-    uint256 public totalOutstandingWS;
-    uint256 public totalCirculatingUS;
-    uint256 public totalCirculatingWS;
-
     uint256 public totalUnweightedShares;
     uint256 public totalWeightedShares;
 
@@ -261,6 +254,8 @@ contract BondManager is Ownable, BondDiscountable {
             bondsSold[levelID] += amount;
         }
 
+        claim(sender);
+
         (uint256 bondPrice, bool discountActive) = getPrice(levelID);
         
         if(discountActive) { 
@@ -284,11 +279,6 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 unweightedShares = bondLevels[levelID].price * amount;
         uint256 weightedShares = bondLevels[levelID].price * amount * bondLevels[levelID].weight / 100;
 
-        totalOutstandingUS += unweightedShares;
-        totalOutstandingWS += weightedShares;
-        totalCirculatingUS += unweightedShares;
-        totalCirculatingWS += unweightedShares;
-
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
@@ -303,7 +293,6 @@ contract BondManager is Ownable, BondDiscountable {
         users[sender].XP += bondLevels[levelID].price;
 
         bond.mintBonds(sender, levelID, users[sender].index, amount);
-        
     }
 
     function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
@@ -318,12 +307,7 @@ contract BondManager is Ownable, BondDiscountable {
         accSharesPerUS += issuedShares * PRECISION / totalUnweightedShares;
         accRewardsPerWS += issuedRewards * PRECISION / totalWeightedShares;
 
-        index = (index * ((issuedShares * PRECISION / totalOutstandingUS) + PRECISION)) / PRECISION;
-
         uint256 weight = (totalWeightedShares * PRECISION / totalUnweightedShares);
-
-        totalOutstandingUS += issuedShares;
-        totalOutstandingWS += issuedRewards * weight / PRECISION;
 
         //
         //totalUnweightedShares += issuedShares * 1e5;
@@ -338,14 +322,15 @@ contract BondManager is Ownable, BondDiscountable {
     }
 
     function dataTransfer(address from, address to, uint256 bondID) public {
-        //(uint256 unweightedShares, uint256 weightedShares) = bond.getBondShares(bondID);
-        uint256 unweightedShares = getBondShares(bondID);
 
         claim(from);
         claim(to);
 
-        uint256 previousIndex = users[from].index * GLOBAL_PRECISION / bond.getBond(bondID).index;
+        (uint256 unweightedShares, uint256 weightedShares, uint256 previousIndex) = getBondShares(bondID);
+
         uint256 newIndex = users[to].index * GLOBAL_PRECISION / previousIndex;
+
+        uint256 XP = getBondLevel(bond.getBond(bondID).levelID).price;
 
         if (IERC721(address(bond)).balanceOf(from) == 1) {
             users[from].unweightedShares = 0;
@@ -356,18 +341,18 @@ contract BondManager is Ownable, BondDiscountable {
             users[from].index = 1e18;
         } else {
             users[from].unweightedShares -= unweightedShares;
-            //users[from].weightedShares -= weightedShares;
+            users[from].weightedShares -= weightedShares;
             users[from].shareDebt = users[from].unweightedShares * accSharesPerUS / PRECISION;
             users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
-            users[from].XP = users[from].XP - getBondLevel(bond.getBond(bondID).levelID).price;
+            users[from].XP = users[from].XP - XP;
         }
 
         users[to].unweightedShares += unweightedShares;
-        //users[to].weightedShares += weightedShares;
+        users[to].weightedShares += weightedShares;
         users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
         users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
-        users[to].XP = users[to].XP + getBondLevel(bond.getBond(bondID).levelID).price;
-
+        users[to].XP = users[to].XP + XP;
+        
         bond.setBondIndex(bondID, newIndex);
     }
 
@@ -393,18 +378,18 @@ contract BondManager is Ownable, BondDiscountable {
         users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / PRECISION;
         users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / PRECISION;
 
-        totalCirculatingUS += claimableShares;
-        totalCirculatingWS += (claimableShares * userWeight / PRECISION);
-
         totalUnweightedShares += claimableShares;
         totalWeightedShares += (claimableShares * userWeight / PRECISION);
 
         baseToken.safeTransfer(user, claimableRewards);
     }
 
-    function getBondShares(uint256 bondID) public view returns (uint256) {
+    function getBondShares(uint256 bondID) public view returns (uint256 unweightedShares, uint256 weightedShares, uint256 _index) {
         address bondOwner = IERC721(address(bond)).ownerOf(bondID);
-        return (users[bondOwner].index * GLOBAL_PRECISION / bond.getBond(bondID).index * getBondLevel(bond.getBond(bondID).levelID).price) / GLOBAL_PRECISION;
+
+        _index = users[bondOwner].index * GLOBAL_PRECISION / bond.getBond(bondID).index;
+        unweightedShares = (_index * getBondLevel(bond.getBond(bondID).levelID).price) / GLOBAL_PRECISION;
+        weightedShares = unweightedShares * getBondLevel(bond.getBond(bondID).levelID).weight / 100;
     }
 
     function getActiveBondLevels() public view returns (bytes4[] memory) {
@@ -515,7 +500,6 @@ contract BondManager is Ownable, BondDiscountable {
     }
 
     function deactivateBondLevel(bytes4 levelID) public onlyOwner {
-        require(!isDiscountPlanned(), "Bond Manager: Can't deactivate bond level during a discount.");
         require(bondLevels[levelID].active == true, "Bond Manager: Level is already inactive.");
 
         uint index;
@@ -544,7 +528,6 @@ contract BondManager is Ownable, BondDiscountable {
     }
 
     function activateBondLevel(bytes4 levelID, uint256 index) public onlyOwner {
-        require(!isDiscountPlanned(), "Bond Manager: Can't activate bond level during a discount.");
         require(!(activeBondLevels.length >= MAX_BOND_LEVELS), "Bond Manager: Exceeding the maximum amount of Bond levels. Try deactivating a level first.");
         require(index <= activeBondLevels.length, "Bond Manager: Index out of bounds.");
         require(bondLevels[levelID].active == false, "Bond Manager: Level is already active.");
