@@ -208,6 +208,9 @@ contract BondManager is Ownable, BondDiscountable {
     uint256 public totalCirculatingUS;
     uint256 public totalCirculatingWS;
 
+    uint256 public totalUnweightedShares;
+    uint256 public totalWeightedShares;
+
     mapping(address => User) public users ;
 
     event DISCOUNT_CREATED (uint256 indexed discountIndex, uint256 startTime, uint256 endTime, uint16 discountRate, bool whitelist);
@@ -286,6 +289,9 @@ contract BondManager is Ownable, BondDiscountable {
         totalCirculatingUS += unweightedShares;
         totalCirculatingWS += unweightedShares;
 
+        totalUnweightedShares += unweightedShares;
+        totalWeightedShares += weightedShares;
+
         if(users[sender].index == 0) {
             users[sender].index = 1e18;
         }
@@ -309,12 +315,12 @@ contract BondManager is Ownable, BondDiscountable {
 
         // issuedRewards and issuedShares are 10e18 now, they must be 10e23
 
-        accSharesPerUS += issuedShares * PRECISION / totalOutstandingUS;
-        accRewardsPerWS += issuedRewards * PRECISION / totalOutstandingWS;
+        accSharesPerUS += issuedShares * PRECISION / totalUnweightedShares;
+        accRewardsPerWS += issuedRewards * PRECISION / totalWeightedShares;
 
         index = (index * ((issuedShares * PRECISION / totalOutstandingUS) + PRECISION)) / PRECISION;
 
-        uint256 weight = (totalOutstandingWS * PRECISION / totalOutstandingUS);
+        uint256 weight = (totalWeightedShares * PRECISION / totalUnweightedShares);
 
         totalOutstandingUS += issuedShares;
         totalOutstandingWS += issuedRewards * weight / PRECISION;
@@ -338,6 +344,9 @@ contract BondManager is Ownable, BondDiscountable {
         claim(from);
         claim(to);
 
+        uint256 previousIndex = users[from].index * GLOBAL_PRECISION / bond.getBond(bondID).index;
+        uint256 newIndex = users[to].index * GLOBAL_PRECISION / previousIndex;
+
         if (IERC721(address(bond)).balanceOf(from) == 1) {
             users[from].unweightedShares = 0;
             users[from].weightedShares = 0;
@@ -358,9 +367,6 @@ contract BondManager is Ownable, BondDiscountable {
         users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
         users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
         users[to].XP = users[to].XP + getBondLevel(bond.getBond(bondID).levelID).price;
-
-        uint256 previousIndex = users[from].index * GLOBAL_PRECISION / bond.getBond(bondID).index;
-        uint256 newIndex = users[to].index * GLOBAL_PRECISION / previousIndex;
 
         bond.setBondIndex(bondID, newIndex);
     }
@@ -389,6 +395,9 @@ contract BondManager is Ownable, BondDiscountable {
 
         totalCirculatingUS += claimableShares;
         totalCirculatingWS += (claimableShares * userWeight / PRECISION);
+
+        totalUnweightedShares += claimableShares;
+        totalWeightedShares += (claimableShares * userWeight / PRECISION);
 
         baseToken.safeTransfer(user, claimableRewards);
     }
