@@ -28,11 +28,10 @@ contract BondDiscountable {
         uint256 endTime;
         // Root of whitelisted addresses merkle tree.
         bytes32 merkleRoot;
-        // Discount rate (percentage) (out of 100).
-        // Gas optimization uint16 + uint240 = 32 bytes. 
-        uint16 discountRate;
+        // Discount rate (percentage) (out of 1e18).
+        uint256 discountRate;
         // Amount in seconds of how often discount price should update. 
-        uint240 updateFrequency;
+        uint256 updateFrequency;
         // Mapping of how many bonds per level can be minted every price update.
         mapping(bytes4 => uint256) purchaseLimit;
     }
@@ -87,8 +86,8 @@ contract BondDiscountable {
     function _startDiscount(
         uint256 _startTime,
         uint256 _endTime,
-        uint16 _discountRate,
-        uint240 _updateFrequency,
+        uint256 _discountRate,
+        uint256 _updateFrequency,
         uint256[] memory _purchaseLimit,
         bytes4[] memory _levelIDs
     ) internal {
@@ -97,7 +96,7 @@ contract BondDiscountable {
         require(_endTime > _startTime, "Bond Discountable: End timestamp must be > than current timestamp."); 
         require(_updateFrequency < (_endTime - _startTime), "Bond Discountable: Update frequency must be < than discount duration."); 
         require((_endTime - _startTime) % _updateFrequency == 0, "Bond Discountable: Discount duration must be divisible by the update frequency.");
-        require(_discountRate <= 100 && _discountRate > 0, "Bond Discountable: Discount rate must be a percentage.");
+        require(_discountRate <= 1e18 && _discountRate > 0, "Bond Discountable: Discount rate must be a percentage.");
         require(!isDiscountPlanned(), "Bond Discountable: There is already a planned discount.");
         require(_levelIDs.length == _purchaseLimit.length, "Bond Discountable: Invalid amount of param array elements.");
 
@@ -125,8 +124,8 @@ contract BondDiscountable {
         uint256 _endWhitelistTime,
         uint256 _endTime,
         bytes32 _merkleRoot,
-        uint16 _discountRate,
-        uint240 _updateFrequency,
+        uint256 _discountRate,
+        uint256 _updateFrequency,
         uint256[] memory _purchaseLimit,
         bytes4[] memory _levelIDs
     ) internal {
@@ -156,7 +155,15 @@ contract BondManager is Ownable, BondDiscountable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
 
-    /// @notice Info of each Bond level. 
+    struct User {
+        uint256 unweightedShares;
+        uint256 weightedShares;
+        uint256 shareDebt;
+        uint256 rewardDebt;
+        uint256 XP;
+        uint256 index;
+    }
+
     struct BondLevel {
         bytes4 levelID;
         bool active;
@@ -167,65 +174,32 @@ contract BondManager is Ownable, BondDiscountable {
     }
 
     IFNFTBond public bond;
-
     IERC20 public baseToken;
 
-    uint256 public accRewardsPerWS = 0;
-    uint256 public accSharesPerUS = 0;
-
-    uint256 private GLOBAL_PRECISION = 10**18;
-    uint256 private WEIGHT_PRECISION = 100;
-
-    bool public isSaleActive = true;
-
+    uint256 private constant PRECISION = 1e18;
     uint256 private constant MAX_BOND_LEVELS = 10;
-
-    uint256 public PRECISION  = 1e18;
-
-    bytes4[] private activeBondLevels;
-
-    mapping(bytes4 => BondLevel) private bondLevels;
-
-    mapping(bytes4 => uint256) private bondsSold;
-
-    mapping(address => uint256) private userXP;
-
-    uint fixedPrecision = 5;
-
-    struct User {
-        uint256 unweightedShares;
-        uint256 weightedShares;
-        uint256 shareDebt;
-        uint256 rewardDebt;
-        uint256 XP;
-        uint256 index;
-    }
 
     uint256 public totalUnweightedShares;
     uint256 public totalWeightedShares;
 
-    mapping(address => User) public users ;
+    uint256 public accRewardsPerWS = 0;
+    uint256 public accSharesPerUS = 0;
 
-    event DISCOUNT_CREATED (uint256 indexed discountIndex, uint256 startTime, uint256 endTime, uint16 discountRate, bool whitelist);
+    bool public isSaleActive = true;
 
+    mapping(address => User) private users;
+
+    bytes4[] private activeBondLevels;
+    mapping(bytes4 => BondLevel) private bondLevels;
+
+    mapping(bytes4 => uint256) private bondsSold;
+
+    event DISCOUNT_CREATED (uint256 indexed discountIndex, uint256 startTime, uint256 endTime, uint256 discountRate, bool whitelist);
     event BOND_LEVEL_CREATED (bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
-
     event BOND_LEVEL_CHANGED (bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
-
     event BOND_LEVEL_TOGGLED (bytes4 indexed levelID, bool activated);
-
     event SALE_TOGGLED (bool activated);
-
     event REWARDS_DEPOSIT (uint256 issuedRewards, uint256 issuedShares);
-
-    event Set (
-        bool isSaleActive
-    );
-
-    event Update (
-        uint256 issuedRewards,
-        uint256 issuedShares
-    );
 
     constructor(address _bond, address _baseToken) {
         require(_bond != address(0));
@@ -234,162 +208,25 @@ contract BondManager is Ownable, BondDiscountable {
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
 
-        addBondLevelAtIndex("Level I", 100, 0, activeBondLevels.length, SafeMath.mul(10, GLOBAL_PRECISION));
-        addBondLevelAtIndex("Level II", 105, 0, activeBondLevels.length, SafeMath.mul(100, GLOBAL_PRECISION));
-        addBondLevelAtIndex("Level III", 110, 0, activeBondLevels.length, SafeMath.mul(1000, GLOBAL_PRECISION));
-        addBondLevelAtIndex("Level IV", 115, 0, activeBondLevels.length, SafeMath.mul(5000, GLOBAL_PRECISION));
+        addBondLevelAtIndex("Level I", (100 * 10**16), 0, activeBondLevels.length, SafeMath.mul(10, PRECISION));
+        addBondLevelAtIndex("Level II", (105 * 10**16), 0, activeBondLevels.length, SafeMath.mul(100, PRECISION));
+        addBondLevelAtIndex("Level III", (110 * 10**16), 0, activeBondLevels.length, SafeMath.mul(1000, PRECISION));
+        addBondLevelAtIndex("Level IV", (115 * 10**16), 0, activeBondLevels.length, SafeMath.mul(5000, PRECISION));
     }
 
-
-    function createMultipleBondsWithTokens(bytes4 levelID, uint256 amount, bytes32[] calldata merkleProof) public {
-        require(isSaleActive, "Bond Manager: Bond sale is inactive.");
-        require(amount > 0 && amount <= 20, "Bond Manager: Invalid amount to mint.");
-        require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
-
-        address sender = _msgSender();
-        require(sender != address(0), "Bond Manager: Creation to the zero address is prohibited.");
-
-        if(bondLevels[levelID].maxSupply != 0) {
-            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
-            bondsSold[levelID] += amount;
-        }
-
-        claim(sender);
-
-        (uint256 bondPrice, bool discountActive) = getPrice(levelID);
-        
-        if(discountActive) { 
-            if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
-                bytes32 leaf = keccak256(abi.encodePacked(sender));
-                require(MerkleProof.verify(merkleProof, discount[discountIndex].merkleRoot, leaf), "Bond Manager: You are not whitelisted.");
-            }
-
-            uint256 updateFactor = getDiscountUpdateFactor();
-            uint256 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], amount));
-            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "Bond Manager: Too many bonds minted during this price update period.");
-
-            discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
-        }
-
-        //require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
-
-        //treasury.bondDeposit(bondPrice * amount, sender);
-
-        // Gets it to string precision
-        uint256 unweightedShares = bondLevels[levelID].price * amount;
-        uint256 weightedShares = bondLevels[levelID].price * amount * bondLevels[levelID].weight / 100;
-
-        totalUnweightedShares += unweightedShares;
-        totalWeightedShares += weightedShares;
-
-        if(users[sender].index == 0) {
-            users[sender].index = 1e18;
-        }
-
-        users[sender].unweightedShares += unweightedShares;
-        users[sender].weightedShares += weightedShares;
-        users[sender].shareDebt = users[sender].unweightedShares * accSharesPerUS / PRECISION;
-        users[sender].rewardDebt = users[sender].weightedShares * accRewardsPerWS / PRECISION;
-        users[sender].XP += bondLevels[levelID].price;
-
-        bond.mintBonds(sender, levelID, users[sender].index, amount);
-    }
-
-    function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
-        //require(_msgSender() == address(treasury));
-
-        baseToken.transferFrom(_msgSender(), address(this), issuedRewards);
-
-        // Increase accumulated shares and rewards.
-
-        // issuedRewards and issuedShares are 10e18 now, they must be 10e23
-
-        accSharesPerUS += issuedShares * PRECISION / totalUnweightedShares;
-        accRewardsPerWS += issuedRewards * PRECISION / totalWeightedShares;
-
-        uint256 weight = (totalWeightedShares * PRECISION / totalUnweightedShares);
-
-        //
-        //totalUnweightedShares += issuedShares * 1e5;
-        //totalWeightedShares += (issuedRewards * 1e5) * weight / STRONG_PRECISION;
-
-        emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
-    }
-
-    function getClaimableAmounts(address user) public view returns (uint256 claimableShares, uint256 claimableRewards) {
-        claimableShares = (users[user].unweightedShares * accSharesPerUS / PRECISION) - users[user].shareDebt;
-        claimableRewards = (users[user].weightedShares * accRewardsPerWS / PRECISION) - users[user].rewardDebt;
-    }
-
-    function dataTransfer(address from, address to, uint256 bondID) public {
-
-        claim(from);
-        claim(to);
-
-        (uint256 unweightedShares, uint256 weightedShares, uint256 previousIndex) = getBondShares(bondID);
-
-        uint256 newIndex = users[to].index * GLOBAL_PRECISION / previousIndex;
-
-        uint256 XP = getBondLevel(bond.getBond(bondID).levelID).price;
-
-        if (IERC721(address(bond)).balanceOf(from) == 1) {
-            users[from].unweightedShares = 0;
-            users[from].weightedShares = 0;
-            users[from].shareDebt = 0;
-            users[from].rewardDebt = 0;
-            users[from].XP = 0;
-            users[from].index = 1e18;
-        } else {
-            users[from].unweightedShares -= unweightedShares;
-            users[from].weightedShares -= weightedShares;
-            users[from].shareDebt = users[from].unweightedShares * accSharesPerUS / PRECISION;
-            users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
-            users[from].XP = users[from].XP - XP;
-        }
-
-        users[to].unweightedShares += unweightedShares;
-        users[to].weightedShares += weightedShares;
-        users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
-        users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
-        users[to].XP = users[to].XP + XP;
-        
-        bond.setBondIndex(bondID, newIndex);
-    }
-
-    function claim(address user) public {
-
-        (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(user);
-
-        if(users[user].index == 0) {
-            users[user].index = 1e18;
-        }
-        
-        if(claimableShares == 0 && claimableRewards == 0) {
-            return;
-        }
-
-        uint256 userWeight = (users[user].weightedShares * PRECISION / users[user].unweightedShares);
-
-        users[user].index = (users[user].index * ((claimableShares * GLOBAL_PRECISION / users[user].unweightedShares) + GLOBAL_PRECISION)) / GLOBAL_PRECISION;
-        
-        users[user].unweightedShares += claimableShares;
-        users[user].weightedShares += (claimableShares * userWeight / PRECISION);
-
-        users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / PRECISION;
-        users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / PRECISION;
-
-        totalUnweightedShares += claimableShares;
-        totalWeightedShares += (claimableShares * userWeight / PRECISION);
-
-        baseToken.safeTransfer(user, claimableRewards);
+    function getUser(address user) public view returns (User memory) {
+        return users[user];
     }
 
     function getBondShares(uint256 bondID) public view returns (uint256 unweightedShares, uint256 weightedShares, uint256 _index) {
         address bondOwner = IERC721(address(bond)).ownerOf(bondID);
 
-        _index = users[bondOwner].index * GLOBAL_PRECISION / bond.getBond(bondID).index;
-        unweightedShares = (_index * getBondLevel(bond.getBond(bondID).levelID).price) / GLOBAL_PRECISION;
-        weightedShares = unweightedShares * getBondLevel(bond.getBond(bondID).levelID).weight / 100;
+        _index = users[bondOwner].index * PRECISION / bond.getBond(bondID).index;
+
+        uint256 x = ((_index * getBondLevel(bond.getBond(bondID).levelID).price) / PRECISION);
+
+        unweightedShares = x * bond.getBond(bondID).discount / PRECISION;
+        weightedShares = x * getBondLevel(bond.getBond(bondID).levelID).weight / PRECISION;
     }
 
     function getActiveBondLevels() public view returns (bytes4[] memory) {
@@ -400,16 +237,12 @@ contract BondManager is Ownable, BondDiscountable {
        return bondLevels[levelID];
     }
 
-    function getUserXP(address user) external view returns (uint256) {
-        return userXP[user];
-    }
-
-    function getPrice(bytes4 levelID) public view returns (uint256, bool) {
+    function getBondPrice(bytes4 levelID) public view returns (uint256, bool) {
         uint256 price = getBondLevel(levelID).price;
 
         if(isDiscountActive()) {
             uint256 totalUpdates = (discount[discountIndex].endTime - discount[discountIndex].startTime) / discount[discountIndex].updateFrequency;
-            uint256 discountStartPrice = price - ((price * discount[discountIndex].discountRate) / 100);
+            uint256 discountStartPrice = price - ((price * discount[discountIndex].discountRate) / PRECISION);
             uint256 updateIncrement = (price - discountStartPrice) / totalUpdates;
             return (discountStartPrice + (updateIncrement * getDiscountUpdateFactor()), true);
         } else {
@@ -417,30 +250,45 @@ contract BondManager is Ownable, BondDiscountable {
         }
     }
 
+    function getClaimableAmounts(address user) public view returns (uint256 claimableShares, uint256 claimableRewards) {
+        claimableShares = (users[user].unweightedShares * accSharesPerUS / PRECISION) - users[user].shareDebt;
+        claimableRewards = (users[user].weightedShares * accRewardsPerWS / PRECISION) - users[user].rewardDebt;
+    }
+
+    /// @notice Links this bond manager to the fNFT bond at deployment. 
+    function linkBondManager() external onlyOwner {
+        bond.linkBondManager(address(this));
+    }
+
+    /// @notice external onlyOnwer implementation of setBaseURI (fNFT Bond function)
+    /// @param baseURI string to set as baseURI
+    function setBaseURI(string memory baseURI) external onlyOwner {
+        return bond.setBaseURI(baseURI);
+    }
+
     function startDiscountAt(uint256 startAt, uint256 endAt, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         _startDiscount(startAt, endAt, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
         emit DISCOUNT_CREATED(discountIndex, startAt, endAt, discountRate, false);
     }
 
-    function startDiscountIn(uint256 startIn, uint256 endIn, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
+    function startDiscountIn(uint256 startIn, uint256 endIn, uint256 discountRate, uint256 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
 
         _startDiscount(cTime + startIn, cTime + endIn, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
         emit DISCOUNT_CREATED(discountIndex, cTime + startIn, cTime + endIn, discountRate, false);
     }
 
-    function startWhitelistedDiscountAt(uint256 startAt, uint256 endWhitelistAt, uint256 endAt, bytes32 merkleRoot, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
+    function startWhitelistedDiscountAt(uint256 startAt, uint256 endWhitelistAt, uint256 endAt, bytes32 merkleRoot, uint256 discountRate, uint256 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         _startWhitelistedDiscount(startAt, endWhitelistAt, endAt, merkleRoot, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
         emit DISCOUNT_CREATED(discountIndex, startAt, endAt, discountRate, true);
     }
 
-    function startWhitelistedDiscountIn(uint256 startIn, uint256 endWhitelistIn, uint256 endIn, bytes32 merkleRoot, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
+    function startWhitelistedDiscountIn(uint256 startIn, uint256 endWhitelistIn, uint256 endIn, bytes32 merkleRoot, uint256 discountRate, uint256 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
 
         _startWhitelistedDiscount(cTime + startIn, cTime + endWhitelistIn, cTime + endIn, merkleRoot, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
         emit DISCOUNT_CREATED(discountIndex, cTime + startIn, cTime + endIn, discountRate, true);
     }
-
 
     function deactivateDiscount() external onlyOwner {
         _deactivateDiscount();
@@ -461,7 +309,6 @@ contract BondManager is Ownable, BondDiscountable {
             name: name,
             price: price
         });
-
 
         activeBondLevels.push();
 
@@ -558,54 +405,133 @@ contract BondManager is Ownable, BondDiscountable {
         emit SALE_TOGGLED(isSaleActive);
     }
 
-    /// @notice Links this bond manager to the fNFT bond at deployment. 
-    function linkBondManager() external onlyOwner {
-        bond.linkBondManager(address(this));
-    }
+    function createMultipleBondsWithTokens(bytes4 levelID, uint256 amount, bytes32[] calldata merkleProof) public {
+        require(isSaleActive, "Bond Manager: Bond sale is inactive.");
+        require(amount > 0 && amount <= 20, "Bond Manager: Invalid amount to mint.");
+        require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
 
-    /// @notice Sets XP balance for a current user.
-    /// @param amount User XP balance.
-    /// @param user User address.
-    function setUserXP(uint256 amount, address user) external {
-        require(_msgSender() == address(bond));
-        userXP[user] = amount;
-    }
+        address sender = _msgSender();
 
-    /// @notice external onlyOnwer implementation of setBaseURI (fNFT Bond function)
-    /// @param baseURI string to set as baseURI
-    function setBaseURI(string memory baseURI) external onlyOwner {
-        return bond.setBaseURI(baseURI);
-    }
-
-    function toFixed(uint256 number, uint n) public view returns (uint256) {
-
-        if (number == 0) {
-            return 0;
+        if(bondLevels[levelID].maxSupply != 0) {
+            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
+            bondsSold[levelID] += amount;
         }
 
-        uint precision = 23;
-        uint length = numDigits(number);
-        
-        uint x;
+        claim(sender);
 
-        if(length < precision) {
-           x = length - ( n - (precision - length)) ;
-        } else {
-            x = (length - ((length - precision) + n));
-        }
-        
-        return number / 10 ** x * 10 ** x;
-    }
+        (uint256 bondPrice, bool discountActive) = getBondPrice(levelID);
 
-    function numDigits(uint number) public view returns (uint8) {
-            uint8 digits = 0;
-            //if (number < 0) digits = 1; // enable this line if '-' counts as a digit
-            while (number != 0) {
-                number /= 10;
-                digits++;
+        uint256 _discount = PRECISION;
+        
+        if(discountActive) { 
+            if(discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
+                bytes32 leaf = keccak256(abi.encodePacked(sender));
+                require(MerkleProof.verify(merkleProof, discount[discountIndex].merkleRoot, leaf), "Bond Manager: You are not whitelisted.");
             }
-        return digits;
+
+            uint256 updateFactor = getDiscountUpdateFactor();
+            uint256 _bondsSold = uint16(SafeMath.add(discountedBondsSold[discountIndex][updateFactor][levelID], amount));
+            require(_bondsSold <= discount[discountIndex].purchaseLimit[levelID], "Bond Manager: Too many bonds minted during this price update period.");
+
+            discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
+
+            _discount = bondPrice * PRECISION / bondLevels[levelID].price;
+        }
+
+        //require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
+
+        //treasury.bondDeposit(bondPrice * amount, sender);
+
+        // Gets it to string precision
+        uint256 unweightedShares = bondPrice * amount;
+        uint256 weightedShares = bondLevels[levelID].price * amount * bondLevels[levelID].weight / PRECISION;
+
+        totalUnweightedShares += unweightedShares;
+        totalWeightedShares += weightedShares;
+
+        users[sender].unweightedShares += unweightedShares;
+        users[sender].weightedShares += weightedShares;
+        users[sender].shareDebt = users[sender].unweightedShares * accSharesPerUS / PRECISION;
+        users[sender].rewardDebt = users[sender].weightedShares * accRewardsPerWS / PRECISION;
+        users[sender].XP += bondLevels[levelID].price;
+
+        bond.mintBonds(sender, levelID, users[sender].index, amount, _discount);
     }
 
+    function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
+        //require(_msgSender() == address(treasury));
+
+        baseToken.transferFrom(_msgSender(), address(this), issuedRewards);
+
+        accSharesPerUS += issuedShares * PRECISION / totalUnweightedShares;
+        accRewardsPerWS += issuedRewards * PRECISION / totalWeightedShares;
+
+        uint256 weight = (totalWeightedShares * PRECISION / totalUnweightedShares);
+
+        emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
+    }
+
+    function dataTransfer(address from, address to, uint256 bondID) public {
+
+        claim(from);
+        claim(to);
+
+        (uint256 unweightedShares, uint256 weightedShares, uint256 previousIndex) = getBondShares(bondID);
+
+        uint256 newIndex = users[to].index * PRECISION / previousIndex;
+
+        uint256 XP = getBondLevel(bond.getBond(bondID).levelID).price;
+
+        if (IERC721(address(bond)).balanceOf(from) == 1) {
+            users[from].unweightedShares = 0;
+            users[from].weightedShares = 0;
+            users[from].shareDebt = 0;
+            users[from].rewardDebt = 0;
+            users[from].XP = 0;
+            users[from].index = 1e18;
+        } else {
+            users[from].unweightedShares -= unweightedShares;
+            users[from].weightedShares -= weightedShares;
+            users[from].shareDebt = users[from].unweightedShares * accSharesPerUS / PRECISION;
+            users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
+            users[from].XP = users[from].XP - XP;
+        }
+
+        users[to].unweightedShares += unweightedShares;
+        users[to].weightedShares += weightedShares;
+        users[to].shareDebt = users[to].unweightedShares * accSharesPerUS / PRECISION;
+        users[to].rewardDebt = users[to].weightedShares * accRewardsPerWS / PRECISION;
+        users[to].XP = users[to].XP + XP;
+        
+        bond.setBondIndex(bondID, newIndex);
+    }
+
+    function claim(address user) public {
+
+        (uint256 claimableShares, uint256 claimableRewards) = getClaimableAmounts(user);
+
+        if(users[user].index == 0) {
+            users[user].index = 1e18;
+        }
+        
+        if(claimableShares == 0 && claimableRewards == 0) {
+            return;
+        }
+
+        uint256 userWeight = (users[user].weightedShares * PRECISION / users[user].unweightedShares);
+
+        users[user].index = (users[user].index * ((claimableShares * PRECISION / users[user].unweightedShares) + PRECISION)) / PRECISION;
+        
+        users[user].unweightedShares += claimableShares;
+        users[user].weightedShares += (claimableShares * userWeight / PRECISION);
+
+        users[user].shareDebt = users[user].unweightedShares * accSharesPerUS / PRECISION;
+        users[user].rewardDebt = users[user].weightedShares * accRewardsPerWS / PRECISION;
+
+        totalUnweightedShares += claimableShares;
+        totalWeightedShares += (claimableShares * userWeight / PRECISION);
+
+        baseToken.safeTransfer(user, claimableRewards);
+    }
     
 }

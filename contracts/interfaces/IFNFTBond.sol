@@ -8,6 +8,7 @@ interface IFNFTBond {
         uint256 bondID;
         bytes4 levelID;
         uint256 index;
+        uint256 discount;
     }
 
     function BondManager() external view returns (address);
@@ -20,7 +21,7 @@ interface IFNFTBond {
 
     function linkBondManager(address bondManager) external;
 
-    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount) external;
+    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount, uint256 discount) external;
 
     function claim(address user, uint256 bondID, uint256 issuedRewards, uint256 issuedShares) external;
 

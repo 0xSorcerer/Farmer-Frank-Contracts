@@ -42,12 +42,10 @@ contract fNFTBond is ERC721, Ownable {
         uint256 bondID;
         bytes4 levelID;
         uint256 index;
+        uint256 discount;
     }
 
     uint256 private constant PRECISION = 10**18;
-    uint256 private constant WEIGHT_PRECISION = 100;
-
-    uint256 private STRONG_PRECISION = 10e25;
 
     IBondManager public bondManager;
 
@@ -101,7 +99,7 @@ contract fNFTBond is ERC721, Ownable {
         return string(abi.encodePacked("0x", converted));
     }
 
-    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount) external {
+    function mintBonds(address user, bytes4 levelID, uint256 index, uint256 amount, uint256 discount) external {
 
         for (uint i = 0; i < amount; i++) {
             uint256 bondID = totalSupply();
@@ -109,7 +107,8 @@ contract fNFTBond is ERC721, Ownable {
             bonds[bondID] = Bond({
                 bondID: bondID,
                 levelID: levelID,
-                index: index
+                index: index,
+                discount: discount
             });
 
             _safeMint(user, bondID);
