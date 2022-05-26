@@ -461,15 +461,26 @@ contract BondManager is Ownable, BondDiscountable {
     function depositRewards(uint256 issuedRewards, uint256 issuedShares) external {
         //require(_msgSender() == address(treasury));
 
-        baseToken.transferFrom(_msgSender(), address(this), issuedRewards);
+        //baseToken.transferFrom(_msgSender(), address(this), issuedRewards);
 
         accSharesPerUS += issuedShares * PRECISION / totalUnweightedShares;
         accRewardsPerWS += issuedRewards * PRECISION / totalWeightedShares;
 
-        uint256 weight = (totalWeightedShares * PRECISION / totalUnweightedShares);
-
         emit REWARDS_DEPOSIT(issuedRewards, issuedShares);
     }
+
+    /*
+    function getBondShares(uint256 bondID) public view returns (uint256 unweightedShares, uint256 weightedShares, uint256 _index) {
+        address bondOwner = IERC721(address(bond)).ownerOf(bondID);
+
+        _index = users[bondOwner].index * PRECISION / bond.getBond(bondID).index;
+
+        uint256 x = ((_index * getBondLevel(bond.getBond(bondID).levelID).price) / PRECISION);
+
+        unweightedShares = x * bond.getBond(bondID).discount / PRECISION;
+        weightedShares = x * getBondLevel(bond.getBond(bondID).levelID).weight / PRECISION;
+    }
+    */
 
     function dataTransfer(address from, address to, uint256 bondID) public {
 
@@ -496,6 +507,7 @@ contract BondManager is Ownable, BondDiscountable {
             users[from].rewardDebt = users[from].weightedShares * accRewardsPerWS / PRECISION;
             users[from].XP = users[from].XP - XP;
         }
+        
 
         users[to].unweightedShares += unweightedShares;
         users[to].weightedShares += weightedShares;

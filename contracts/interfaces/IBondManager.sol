@@ -98,4 +98,6 @@ interface IBondManager {
     function setBaseURI(string memory baseURI) external;
 
     function dataTransfer(address from, address to, uint256 bondID) external;
+
+    function getBondShares(uint256 bondID) external view returns (uint256 unweightedShares, uint256 weightedShares, uint256 _index);
 }
