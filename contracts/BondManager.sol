@@ -154,7 +154,6 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 weight;
         uint256 maxSupply;
         uint256 price;
-        //CHANGE ORDER
     }
 
     IFNFTBond public bond;
@@ -192,25 +191,27 @@ contract BondManager is Ownable, BondDiscountable {
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
 
-        addBondLevelAtIndex("Level I", (100 * 10**16), 0, activeBondLevels.length, SafeMath.mul(10, PRECISION), true);
-        addBondLevelAtIndex("Level II", (105 * 10**16), 0, activeBondLevels.length, SafeMath.mul(100, PRECISION), true);
-        addBondLevelAtIndex("Level III", (110 * 10**16), 0, activeBondLevels.length, SafeMath.mul(1000, PRECISION), true);
-        addBondLevelAtIndex("Level IV", (115 * 10**16), 0, activeBondLevels.length, SafeMath.mul(5000, PRECISION), true);
+        addBondLevelAtIndex("Level I", (100 * 10**16), 0, activeBondLevels.length, (10 * PRECISION), true);
+        addBondLevelAtIndex("Level II", (105 * 10**16), 0, activeBondLevels.length, (100 * PRECISION), true);
+        addBondLevelAtIndex("Level III", (110 * 10**16), 0, activeBondLevels.length, (1000 * PRECISION), true);
+        addBondLevelAtIndex("Level IV", (115 * 10**16), 0, activeBondLevels.length, (5000 * PRECISION), true);
     }
 
     function getUser(address user) public view returns (User memory) {
         return users[user];
     }
 
-    function getBondShares(uint256 bondID) public view returns (uint256 unweightedShares, uint256 weightedShares, uint256 _index) {
+    function getBondShares(uint256 bondID) public view returns (uint256 unweightedShares, uint256 weightedShares, uint256 growthMultiplier) {
         address bondOwner = IERC721(address(bond)).ownerOf(bondID);
 
-        _index = (users[bondOwner].index * PRECISION) / bond.getBond(bondID).index;
+        IFNFTBond.Bond memory _bond = bond.getBond(bondID);
 
-        uint256 x = ((_index * getBondLevel(bond.getBond(bondID).levelID).price) / PRECISION);
+        growthMultiplier = (users[bondOwner].index * PRECISION) / _bond.index;
 
-        unweightedShares = (x * bond.getBond(bondID).discount) / PRECISION;
-        weightedShares = (x * getBondLevel(bond.getBond(bondID).levelID).weight) / PRECISION;
+        uint256 baseShares = ((growthMultiplier * getBondLevel(_bond.levelID).price) / PRECISION);
+
+        unweightedShares = (baseShares * _bond.discount) / PRECISION;
+        weightedShares = (baseShares * getBondLevel(_bond.levelID).weight) / PRECISION;
     }
 
     function getActiveBondLevels() public view returns (bytes4[] memory) {
@@ -390,6 +391,7 @@ contract BondManager is Ownable, BondDiscountable {
 
     function toggleSale() external onlyOwner {
         isSaleActive = !isSaleActive;
+
         emit SALE_TOGGLED(isSaleActive);
     }
 
@@ -465,14 +467,6 @@ contract BondManager is Ownable, BondDiscountable {
 
         setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + lPrice));
 
-        /*
-        users[sender].unweightedShares += unweightedShares;
-        users[sender].weightedShares += weightedShares;
-        users[sender].shareDebt = (users[sender].unweightedShares * accSharesPerUS) / PRECISION;
-        users[sender].rewardDebt = (users[sender].weightedShares * accRewardsPerWS) / PRECISION;
-        users[sender].XP += bondLevels[levelID].price;
-        */
-
         bond.mintBonds(sender, levelID, users[sender].index, amount, _discount);
     }
 
@@ -528,32 +522,10 @@ contract BondManager is Ownable, BondDiscountable {
         if (IERC721(address(bond)).balanceOf(from) == 1) {
             setUserData(from, 0, 0, 0);
             users[from].index = 1e18;
-            /*
-            users[from].unweightedShares = 0;
-            users[from].weightedShares = 0;
-            users[from].shareDebt = 0;
-            users[from].rewardDebt = 0;
-            users[from].XP = 0;
-            */
         } else {
             setUserData(from, (users[from].unweightedShares - unweightedShares), (users[from].weightedShares - weightedShares), (users[from].XP - XP));
-            /*
-            users[from].unweightedShares -= unweightedShares;
-            users[from].weightedShares -= weightedShares;
-            users[from].shareDebt = (users[from].unweightedShares * accSharesPerUS) / PRECISION;
-            users[from].rewardDebt = (users[from].weightedShares * accRewardsPerWS) / PRECISION;
-            users[from].XP = users[from].XP - XP;
-            */
         }
         
-        /*
-        users[to].unweightedShares += unweightedShares;
-        users[to].weightedShares += weightedShares;
-        users[to].shareDebt = (users[to].unweightedShares * accSharesPerUS) / PRECISION;
-        users[to].rewardDebt = (users[to].weightedShares * accRewardsPerWS) / PRECISION;
-        users[to].XP = users[to].XP + XP;
-        */
-
         setUserData(to, (users[to].unweightedShares + unweightedShares), (users[to].weightedShares + weightedShares), (users[to].XP + XP));
 
         bond.setBondIndex(bondID, newIndex);
@@ -570,27 +542,20 @@ contract BondManager is Ownable, BondDiscountable {
             return;
         }
 
-        uint256 userWeight = ((users[user].weightedShares * PRECISION) / users[user].unweightedShares);
+        uint256 _unweightedShares = users[user].unweightedShares;
+        uint256 _weightedShares = users[user].weightedShares;
 
-        users[user].index = (users[user].index * (((claimableShares * PRECISION) / users[user].unweightedShares) + PRECISION)) / PRECISION;
+        uint256 userWeight = ((_weightedShares * PRECISION) / _unweightedShares);
+        uint256 claimableWeightedShares = ((claimableShares * userWeight) / PRECISION);
 
-        setUserData(user, (users[user].unweightedShares + claimableShares), (users[user].weightedShares + ((claimableShares * userWeight) / PRECISION)), (users[user].XP));
+        users[user].index = (users[user].index * (((claimableShares * PRECISION) / _unweightedShares) + PRECISION)) / PRECISION;
 
-
-/*
-        users[user].unweightedShares += claimableShares;
-        users[user].weightedShares += ((claimableShares * userWeight) / PRECISION);
-        users[user].shareDebt = (users[user].unweightedShares * accSharesPerUS) / PRECISION;
-        users[user].rewardDebt = (users[user].weightedShares * accRewardsPerWS) / PRECISION;
-        */
+        setUserData(user, (_unweightedShares + claimableShares), (_weightedShares + claimableWeightedShares), (users[user].XP));
 
         totalUnweightedShares += claimableShares;
-        totalWeightedShares += ((claimableShares * userWeight) / PRECISION);
+        totalWeightedShares += claimableWeightedShares;
 
         baseToken.safeTransfer(user, claimableRewards);
     }
 
-    function test(bool t) public view returns (bool) {
-        return t;
-    }
 }
