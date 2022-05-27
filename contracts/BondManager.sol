@@ -414,37 +414,14 @@ contract BondManager is Ownable, BondDiscountable {
         users[sender].XP = XP;
     }
 
-    function createMultipleBonds(bytes4 levelID, uint256 amount) external onlyOwner {
-        if (bondLevels[levelID].maxSupply != 0) {
-            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
-            bondsSold[levelID] += amount;
-        }
-
-        address sender = _msgSender();
-
-        claim(sender);
-
-        uint256 unweightedShares = bondLevels[levelID].price * amount;
-        uint256 weightedShares = (bondLevels[levelID].price * amount * bondLevels[levelID].weight) / PRECISION;
-
-        totalUnweightedShares += unweightedShares;
-        totalWeightedShares += weightedShares;
-
-        users[sender].unweightedShares += unweightedShares;
-        users[sender].weightedShares += weightedShares;
-        users[sender].shareDebt = (users[sender].unweightedShares * accSharesPerUS) / PRECISION;
-        users[sender].rewardDebt = (users[sender].weightedShares * accRewardsPerWS) / PRECISION;
-        users[sender].XP += bondLevels[levelID].price;
-
-        bond.mintBonds(sender, levelID, users[sender].index, amount, PRECISION);
-    }
-
     function createMultipleBondsWithTokens(bytes4 levelID, uint256 amount, bytes32[] calldata merkleProof) public {
         require(isSaleActive, "Bond Manager: Bond sale is inactive.");
         require(amount > 0 && amount <= 20, "Bond Manager: Invalid amount to mint.");
         require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
 
         address sender = _msgSender();
+
+        //BondLevel memory level = bondLevels[levelID];
 
         if (bondLevels[levelID].maxSupply != 0) {
             require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
@@ -483,14 +460,46 @@ contract BondManager is Ownable, BondDiscountable {
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
+        setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + bondLevels[levelID].price));
+
+        /*
+        users[sender].unweightedShares += unweightedShares;
+        users[sender].weightedShares += weightedShares;
+        users[sender].shareDebt = (users[sender].unweightedShares * accSharesPerUS) / PRECISION;
+        users[sender].rewardDebt = (users[sender].weightedShares * accRewardsPerWS) / PRECISION;
+        users[sender].XP += bondLevels[levelID].price;
+        */
+
+        bond.mintBonds(sender, levelID, users[sender].index, amount, _discount);
+    }
+
+/*
+    function createMultipleBonds(bytes4 levelID, uint256 amount) external onlyOwner {
+        if (bondLevels[levelID].maxSupply != 0) {
+            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
+            bondsSold[levelID] += amount;
+        }
+
+        address sender = _msgSender();
+
+        claim(sender);
+
+        uint256 unweightedShares = bondLevels[levelID].price * amount;
+        uint256 weightedShares = (bondLevels[levelID].price * amount * bondLevels[levelID].weight) / PRECISION;
+
+        totalUnweightedShares += unweightedShares;
+        totalWeightedShares += weightedShares;
+
         users[sender].unweightedShares += unweightedShares;
         users[sender].weightedShares += weightedShares;
         users[sender].shareDebt = (users[sender].unweightedShares * accSharesPerUS) / PRECISION;
         users[sender].rewardDebt = (users[sender].weightedShares * accRewardsPerWS) / PRECISION;
         users[sender].XP += bondLevels[levelID].price;
 
-        bond.mintBonds(sender, levelID, users[sender].index, amount, _discount);
+        bond.mintBonds(sender, levelID, users[sender].index, amount, PRECISION);
     }
+
+    */
 
     function depositRewards(uint256 issuedShares, uint256 issuedRewards) external {
         //require(_msgSender() == address(treasury));
@@ -514,25 +523,35 @@ contract BondManager is Ownable, BondDiscountable {
         uint256 XP = getBondLevel(bond.getBond(bondID).levelID).price;
 
         if (IERC721(address(bond)).balanceOf(from) == 1) {
+            setUserData(from, 0, 0, 0);
+            users[from].index = 1e18;
+            /*
             users[from].unweightedShares = 0;
             users[from].weightedShares = 0;
             users[from].shareDebt = 0;
             users[from].rewardDebt = 0;
             users[from].XP = 0;
-            users[from].index = 1e18;
+            */
         } else {
+            setUserData(from, (users[from].unweightedShares - unweightedShares), (users[from].weightedShares - weightedShares), (users[from].XP - XP));
+            /*
             users[from].unweightedShares -= unweightedShares;
             users[from].weightedShares -= weightedShares;
             users[from].shareDebt = (users[from].unweightedShares * accSharesPerUS) / PRECISION;
             users[from].rewardDebt = (users[from].weightedShares * accRewardsPerWS) / PRECISION;
             users[from].XP = users[from].XP - XP;
+            */
         }
-
+        
+        /*
         users[to].unweightedShares += unweightedShares;
         users[to].weightedShares += weightedShares;
         users[to].shareDebt = (users[to].unweightedShares * accSharesPerUS) / PRECISION;
         users[to].rewardDebt = (users[to].weightedShares * accRewardsPerWS) / PRECISION;
         users[to].XP = users[to].XP + XP;
+        */
+
+        setUserData(to, (users[to].unweightedShares + unweightedShares), (users[to].weightedShares + weightedShares), (users[to].XP + XP));
 
         bond.setBondIndex(bondID, newIndex);
     }
@@ -552,11 +571,15 @@ contract BondManager is Ownable, BondDiscountable {
 
         users[user].index = (users[user].index * (((claimableShares * PRECISION) / users[user].unweightedShares) + PRECISION)) / PRECISION;
 
+        setUserData(user, (users[user].unweightedShares + claimableShares), (users[user].weightedShares + ((claimableShares * userWeight) / PRECISION)), (users[user].XP));
+
+
+/*
         users[user].unweightedShares += claimableShares;
         users[user].weightedShares += ((claimableShares * userWeight) / PRECISION);
-
         users[user].shareDebt = (users[user].unweightedShares * accSharesPerUS) / PRECISION;
         users[user].rewardDebt = (users[user].weightedShares * accRewardsPerWS) / PRECISION;
+        */
 
         totalUnweightedShares += claimableShares;
         totalWeightedShares += ((claimableShares * userWeight) / PRECISION);
