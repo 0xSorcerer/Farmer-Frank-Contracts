@@ -33,7 +33,7 @@ module.exports = async (deployer) => {
     
     
     await deployer.deploy(fNFTBond, "fNFT Bond", "fNFTB")
-    await deployer.deploy(BondManager, fNFTBond.address, "0x17bb7A9ad6EA683F02db6281c744Ae061f4B93C3")
+    await deployer.deploy(BondManager, fNFTBond.address, "0x9BE4ee1351D550884d00061661acf1DbaCf92778")
 
     const bond = await fNFTBond.deployed()
 

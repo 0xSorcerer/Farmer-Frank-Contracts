@@ -51,9 +51,6 @@ contract fNFTBond is ERC721, Ownable {
 
     mapping(uint256 => Bond) private bonds; 
 
-    event BOND_CREATED (uint256 indexed bondID, bytes4 indexed levelID, address indexed user, uint256 mint);
-    event BOND_UPDATED (uint256 indexed bondID, address indexed user, uint256 newUnweightedShares, uint256 newWeightedShares);
-
     constructor(string memory name, string memory symbol) ERC721(name, symbol) {
         
     }
@@ -111,7 +108,7 @@ contract fNFTBond is ERC721, Ownable {
                 discount: discount
             });
 
-            _safeMint(user, bondID);
+            _mint(user, bondID);
         }
     }
 
