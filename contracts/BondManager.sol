@@ -423,8 +423,11 @@ contract BondManager is Ownable, BondDiscountable {
 
         //BondLevel memory level = bondLevels[levelID];
 
-        if (bondLevels[levelID].maxSupply != 0) {
-            require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
+        uint256 lPrice = bondLevels[levelID].price;
+        uint256 lMaxSupply = bondLevels[levelID].maxSupply;
+
+        if (lMaxSupply != 0) {
+            require(lMaxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
             bondsSold[levelID] += amount;
         }
 
@@ -446,7 +449,7 @@ contract BondManager is Ownable, BondDiscountable {
 
             discountedBondsSold[discountIndex][updateFactor][levelID] = _bondsSold;
 
-            _discount = (bondPrice * PRECISION) / bondLevels[levelID].price;
+            _discount = (bondPrice * PRECISION) / lPrice;
         }
 
         //require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
@@ -455,12 +458,12 @@ contract BondManager is Ownable, BondDiscountable {
 
         // Gets it to string precision
         uint256 unweightedShares = bondPrice * amount;
-        uint256 weightedShares = (bondLevels[levelID].price * amount * bondLevels[levelID].weight) / PRECISION;
+        uint256 weightedShares = (lPrice * amount * bondLevels[levelID].weight) / PRECISION;
 
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
-        setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + bondLevels[levelID].price));
+        setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + lPrice));
 
         /*
         users[sender].unweightedShares += unweightedShares;
