@@ -134,6 +134,23 @@ contract BondDiscountable {
 
 /// Users will use this contract to mint bonds and claim their rewards.
 
+/// UNWEIGHTED SHARES -> Used to distribute share rewards issued to bonds.
+///     At mint (no discount), unweighted shares metrics is the bond's ORIGINAL price.
+///     At mint (discount), unweighted shares metrics is the bond's DISCOUNTED price.
+///
+/// WEIGHTED SHARES -> Used to distribute token rewards issued to bonds.
+///     At mint (with and without discount), weighted shares metrics is the bond's ORIGINAL price multiplied by the bond's weight.
+
+/// When revenue gets redistributed within FrankTreasury, a part is reinvested, and a part is rewarded as tokens to bond holders.
+///     The reinvested amount is accounted for in the form of share issuance to all bonds. These issued shares are divided between bonds
+///     according to their amount of unweightedShares compared to the total amount of unweightedShares. 
+///
+///     The tokens rewards are divided between bonds according to their amount of weightedShares compared to the total amount of weightedShares.
+
+/// Upon claiming, the shares received by a bond will increase both its weighted shares and unweighted shares.
+///     Unweighted shares will simply increase by the amount of shares received.
+///     Weighted shares will increase by the amount of shares received multiplied by the bond's weight. 
+
 contract BondManager is Ownable, BondDiscountable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
@@ -177,11 +194,11 @@ contract BondManager is Ownable, BondDiscountable {
 
     mapping(bytes4 => uint256) private bondsSold;
 
-    event DISCOUNT_CREATED(uint256 indexed discountIndex, uint256 startTime, uint256 endTime, uint256 discountRate, bool whitelist);
-    event BOND_LEVEL_CREATED(bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
-    event BOND_LEVEL_CHANGED(bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
-    event BOND_LEVEL_TOGGLED(bytes4 indexed levelID, bool activated);
-    event SALE_TOGGLED(bool activated);
+    event DISCOUNT_CREATE(uint256 indexed discountIndex, uint256 startTime, uint256 endTime, uint256 discountRate, bool whitelist);
+    event BOND_LEVEL_CREATE(bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
+    event BOND_LEVEL_CHANGE(bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
+    event BOND_LEVEL_TOGGLE(bytes4 indexed levelID, bool activated);
+    event SALE_TOGGLE(bool activated);
     event REWARDS_DEPOSIT(uint256 issuedRewards, uint256 issuedShares);
 
     constructor(address _bond, address _baseToken) {
@@ -254,28 +271,27 @@ contract BondManager is Ownable, BondDiscountable {
     function startDiscountAt(uint256 startAt, uint256 endAt, uint16 discountRate, uint240 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         _startDiscount(startAt, endAt, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
         
-        emit DISCOUNT_CREATED(discountIndex, startAt, endAt, discountRate, false);
+        emit DISCOUNT_CREATE(discountIndex, startAt, endAt, discountRate, false);
     }
 
     function startDiscountIn(uint256 startIn, uint256 endIn, uint256 discountRate, uint256 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
-
         _startDiscount(cTime + startIn, cTime + endIn, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
-        emit DISCOUNT_CREATED(discountIndex, cTime + startIn, cTime + endIn, discountRate, false);
+
+        emit DISCOUNT_CREATE(discountIndex, cTime + startIn, cTime + endIn, discountRate, false);
     }
 
     function startWhitelistedDiscountAt(uint256 startAt, uint256 endWhitelistAt, uint256 endAt, bytes32 merkleRoot, uint256 discountRate, uint256 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         _startWhitelistedDiscount(startAt, endWhitelistAt, endAt, merkleRoot, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
 
-        emit DISCOUNT_CREATED(discountIndex, startAt, endAt, discountRate, true);
+        emit DISCOUNT_CREATE(discountIndex, startAt, endAt, discountRate, true);
     }
 
     function startWhitelistedDiscountIn(uint256 startIn, uint256 endWhitelistIn, uint256 endIn, bytes32 merkleRoot, uint256 discountRate, uint256 updateFrequency, uint256[] memory purchaseLimit) external onlyOwner {
         uint256 cTime = block.timestamp;
-
         _startWhitelistedDiscount(cTime + startIn, cTime + endWhitelistIn, cTime + endIn, merkleRoot, discountRate, updateFrequency, purchaseLimit, getActiveBondLevels());
 
-        emit DISCOUNT_CREATED(discountIndex, cTime + startIn, cTime + endIn, discountRate, true);
+        emit DISCOUNT_CREATE(discountIndex, cTime + startIn, cTime + endIn, discountRate, true);
     }
 
     function deactivateDiscount() external onlyOwner {
@@ -313,7 +329,7 @@ contract BondManager is Ownable, BondDiscountable {
 
         bondLevels[levelID] = bondLevel;
 
-        emit BOND_LEVEL_CREATED(levelID, name, weight, maxSupply, price);
+        emit BOND_LEVEL_CREATE(levelID, name, weight, maxSupply, price);
 
         return (levelID);
     }
@@ -332,7 +348,7 @@ contract BondManager is Ownable, BondDiscountable {
             price: price
         });
 
-        emit BOND_LEVEL_CHANGED(levelID, name, weight, maxSupply, price);
+        emit BOND_LEVEL_CHANGE(levelID, name, weight, maxSupply, price);
     }
 
     function deactivateBondLevel(bytes4 levelID) public onlyOwner {
@@ -360,7 +376,7 @@ contract BondManager is Ownable, BondDiscountable {
         activeBondLevels.pop();
         bondLevels[levelID].active = false;
 
-        emit BOND_LEVEL_TOGGLED(levelID, false);
+        emit BOND_LEVEL_TOGGLE(levelID, false);
     }
 
     function activateBondLevel(bytes4 levelID, uint256 index) public onlyOwner {
@@ -381,7 +397,7 @@ contract BondManager is Ownable, BondDiscountable {
 
         bondLevels[levelID].active = true;
 
-        emit BOND_LEVEL_TOGGLED(levelID, true);
+        emit BOND_LEVEL_TOGGLE(levelID, true);
     }
 
     function rearrangeBondLevel(bytes4 levelID, uint256 index) external onlyOwner {
@@ -392,7 +408,7 @@ contract BondManager is Ownable, BondDiscountable {
     function toggleSale() external onlyOwner {
         isSaleActive = !isSaleActive;
 
-        emit SALE_TOGGLED(isSaleActive);
+        emit SALE_TOGGLE(isSaleActive);
     }
 
     function setUserData(address sender, uint256 unweightedShares, uint256 weightedShares, uint256 XP) internal {
@@ -458,7 +474,6 @@ contract BondManager is Ownable, BondDiscountable {
 
         //treasury.bondDeposit(bondPrice * amount, sender);
 
-        // Gets it to string precision
         uint256 unweightedShares = bondPrice * amount;
         uint256 weightedShares = (lPrice * amount * bondLevels[levelID].weight) / PRECISION;
 
@@ -470,7 +485,7 @@ contract BondManager is Ownable, BondDiscountable {
         bond.mintBonds(sender, levelID, users[sender].index, amount, _discount);
     }
 
-/*
+
     function createMultipleBonds(bytes4 levelID, uint256 amount) external onlyOwner {
         if (bondLevels[levelID].maxSupply != 0) {
             require(bondLevels[levelID].maxSupply >= bondsSold[levelID] + amount, "Bond Manager: Exceeding Bond level maximum supply.");
@@ -481,22 +496,18 @@ contract BondManager is Ownable, BondDiscountable {
 
         claim(sender);
 
-        uint256 unweightedShares = bondLevels[levelID].price * amount;
-        uint256 weightedShares = (bondLevels[levelID].price * amount * bondLevels[levelID].weight) / PRECISION;
+        uint256 price = bondLevels[levelID].price;
+
+        uint256 unweightedShares = price * amount;
+        uint256 weightedShares = (price * amount * bondLevels[levelID].weight) / PRECISION;
 
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
-        users[sender].unweightedShares += unweightedShares;
-        users[sender].weightedShares += weightedShares;
-        users[sender].shareDebt = (users[sender].unweightedShares * accSharesPerUS) / PRECISION;
-        users[sender].rewardDebt = (users[sender].weightedShares * accRewardsPerWS) / PRECISION;
-        users[sender].XP += bondLevels[levelID].price;
+        setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + price));
 
         bond.mintBonds(sender, levelID, users[sender].index, amount, PRECISION);
     }
-
-    */
 
     function depositRewards(uint256 issuedShares, uint256 issuedRewards) external {
         //require(_msgSender() == address(treasury));
@@ -513,9 +524,9 @@ contract BondManager is Ownable, BondDiscountable {
         claim(from);
         claim(to);
 
-        (uint256 unweightedShares, uint256 weightedShares, uint256 previousIndex) = getBondShares(bondID);
+        (uint256 unweightedShares, uint256 weightedShares, uint256 previousMultiplier) = getBondShares(bondID);
 
-        uint256 newIndex = (users[to].index * PRECISION) / previousIndex;
+        uint256 newIndex = (users[to].index * PRECISION) / previousMultiplier;
 
         uint256 XP = getBondLevel(bond.getBond(bondID).levelID).price;
 
