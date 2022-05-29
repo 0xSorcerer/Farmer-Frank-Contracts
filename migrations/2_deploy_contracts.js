@@ -29,15 +29,13 @@ module.exports = async (deployer) => {
 
 module.exports = async (deployer) => {
 
-    //await deployer.deploy(ERC20, "JOE", "JOE")
-
     await deployer.deploy(FrankTreasury)
 
     const treasury = await FrankTreasury.deployed()
     
     
     await deployer.deploy(fNFTBond, "fNFT Bond", "fNFTB")
-    await deployer.deploy(BondManager, fNFTBond.address, "0x1217686124AA11323cC389a8BC39C170D665370b", treasury.address)
+    await deployer.deploy(BondManager, fNFTBond.address, "0x6e84a6216eA6dACC71eE8E6b0a5B7322EEbC0fDd", treasury.address)
 
     const bond = await fNFTBond.deployed()
     const manager = await BondManager.deployed()
