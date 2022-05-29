@@ -129,7 +129,7 @@ contract BondDiscountable {
     }
 }
 
-/// @title Middleman between a user and its fNFT bond.
+/// @title Middleman between a user and fNFT bond contract.
 /// @author @0xSorcerer
 
 /// Users will use this contract to mint bonds and claim their rewards.
@@ -195,6 +195,9 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Token used to mint Bonds and issue rewards.
     IERC20 public baseToken;
 
+    /// @notice Farmer Frank Treasury interface. 
+    IFrankTreasury public treasury;
+
     /// @dev Precision constant.
     uint256 private constant PRECISION = 1e18;
 
@@ -211,7 +214,7 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Whether bond sale is currently active.
     bool public isSaleActive = true;
 
-    /// @notice Mapping storing all user's data.
+    /// @dev Mapping storing all user's data.
     mapping(address => User) private users;
 
     /// @dev Maximum amount of Bond levels that can be concurrently active.
@@ -234,15 +237,19 @@ contract BondManager is Ownable, BondDiscountable {
     event BOND_LEVEL_CREATE(bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
     event BOND_LEVEL_CHANGE(bytes4 indexed levelID, string name, uint256 weight, uint256 maxSupply, uint256 price);
     event BOND_LEVEL_TOGGLE(bytes4 indexed levelID, bool activated);
+    event BONDS_CREATE(address indexed user, bytes4 indexed levelID, uint256 amount);
     event SALE_TOGGLE(bool activated);
     event REWARDS_DEPOSIT(uint256 issuedRewards, uint256 issuedShares);
 
-    constructor(address _bond, address _baseToken) {
+    constructor(address _bond, address _baseToken, address _treasury) {
         require(_bond != address(0));
         require(_baseToken != address(0));
+        require(_treasury != address(0));
 
         bond = IFNFTBond(_bond);
         baseToken = IERC20(_baseToken);
+
+        setTreasury(_treasury);
 
         addBondLevelAtIndex("Level I", (100 * 10**16), 0, activeBondLevels.length, (10 * PRECISION), true);
         addBondLevelAtIndex("Level II", (105 * 10**16), 0, activeBondLevels.length, (100 * PRECISION), true);
@@ -317,7 +324,7 @@ contract BondManager is Ownable, BondDiscountable {
 
     /// @notice Links this bond manager to the fNFT bond at deployment.
     function linkBondManager() external onlyOwner {
-        bond.linkBondManager(address(this));
+        bond.setBondManager(address(this));
     }
 
     /// @notice external onlyOnwer implementation of setBaseURI (fNFT Bond function)
@@ -363,6 +370,13 @@ contract BondManager is Ownable, BondDiscountable {
     /// @notice Deactivates a discount.
     function deactivateDiscount() external onlyOwner {
         _deactivateDiscount();
+    }
+
+    /// @notice Set the treasury contract interface.
+    /// @param _treasury FrankTreasury contract address.
+    function setTreasury(address _treasury) public onlyOwner {
+        require(_treasury != address(0));
+        treasury = IFrankTreasury(_treasury);
     }
 
     /// @notice Create a Bond level and adds it at a particular index of activeBondLevels array.
@@ -540,7 +554,7 @@ contract BondManager is Ownable, BondDiscountable {
         require(amount > 0 && amount <= 20, "Bond Manager: Invalid amount to mint.");
         require(getBondLevel(levelID).active, "Bond Manager: Bond level is inactive.");
 
-        address sender = _msgSender();
+        address user = _msgSender();
 
         uint256 lPrice = bondLevels[levelID].price;
         uint256 lMaxSupply = bondLevels[levelID].maxSupply;
@@ -550,7 +564,7 @@ contract BondManager is Ownable, BondDiscountable {
             bondsSold[levelID] += amount;
         }
 
-        claim(sender);
+        claim(user);
 
         (uint256 bondPrice, bool discountActive) = getBondPrice(levelID);
 
@@ -558,7 +572,7 @@ contract BondManager is Ownable, BondDiscountable {
 
         if (discountActive) {
             if (discount[discountIndex].endWhitelistTime != 0 && discount[discountIndex].endWhitelistTime > block.timestamp) {
-                bytes32 leaf = keccak256(abi.encodePacked(sender));
+                bytes32 leaf = keccak256(abi.encodePacked(user));
                 require(MerkleProof.verify(merkleProof, discount[discountIndex].merkleRoot, leaf), "Bond Manager: You are not whitelisted.");
             }
 
@@ -571,9 +585,8 @@ contract BondManager is Ownable, BondDiscountable {
             _discount = (bondPrice * PRECISION) / lPrice;
         }
 
-        //require(baseToken.balanceOf(sender) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
-
-        //treasury.bondDeposit(bondPrice * amount, sender);
+        require(baseToken.balanceOf(user) >= bondPrice * amount, "Bond Manager: Your balance can't cover the mint cost.");
+        treasury.bondDeposit(bondPrice * amount, user);
 
         uint256 unweightedShares = bondPrice * amount;
         uint256 weightedShares = (lPrice * amount * bondLevels[levelID].weight) / PRECISION;
@@ -581,9 +594,11 @@ contract BondManager is Ownable, BondDiscountable {
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
-        setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + lPrice));
+        setUserData(user, (users[user].unweightedShares + unweightedShares), (users[user].weightedShares + weightedShares), (users[user].XP + lPrice));
 
-        bond.mintBonds(sender, levelID, users[sender].index, amount, _discount);
+        bond.mintBonds(user, levelID, users[user].index, amount, _discount);
+
+        emit BONDS_CREATE(user, levelID, amount);
     }
 
     /// @notice onlyOwner function used to mint bonds without sending JOE.
@@ -596,9 +611,9 @@ contract BondManager is Ownable, BondDiscountable {
             bondsSold[levelID] += amount;
         }
 
-        address sender = _msgSender();
+        address user = _msgSender();
 
-        claim(sender);
+        claim(user);
 
         uint256 price = bondLevels[levelID].price;
 
@@ -608,9 +623,11 @@ contract BondManager is Ownable, BondDiscountable {
         totalUnweightedShares += unweightedShares;
         totalWeightedShares += weightedShares;
 
-        setUserData(sender, (users[sender].unweightedShares + unweightedShares), (users[sender].weightedShares + weightedShares), (users[sender].XP + price));
+        setUserData(user, (users[user].unweightedShares + unweightedShares), (users[user].weightedShares + weightedShares), (users[user].XP + price));
 
-        bond.mintBonds(sender, levelID, users[sender].index, amount, PRECISION);
+        bond.mintBonds(user, levelID, users[user].index, amount, PRECISION);
+
+        emit BONDS_CREATE(user, levelID, amount);
     }
 
     /// @notice Deposit rewards and shares for users to be claimed from this contract.
@@ -618,9 +635,9 @@ contract BondManager is Ownable, BondDiscountable {
     /// @param issuedShares Amount of new shares claimable by users.
     /// @dev Can only be called by treasury.
     function depositRewards(uint256 issuedShares, uint256 issuedRewards) external {
-        //require(_msgSender() == address(treasury));
+        require(_msgSender() == address(treasury));
 
-        //baseToken.transferFrom(_msgSender(), address(this), issuedRewards);
+        baseToken.transferFrom(address(treasury), address(this), issuedRewards);
 
         accSharesPerUS += (issuedShares * PRECISION) / totalUnweightedShares;
         accRewardsPerWS += (issuedRewards * PRECISION) / totalWeightedShares;
@@ -686,6 +703,12 @@ contract BondManager is Ownable, BondDiscountable {
         totalWeightedShares += claimableWeightedShares;
 
         baseToken.safeTransfer(user, claimableRewards);
+    }
+
+    /// @notice Open-ended execute function.
+    function execute(address target, uint256 value, bytes calldata data) external onlyOwner returns (bool, bytes memory) {
+        (bool success, bytes memory result) = target.call{value: value}(data);
+        return (success, result);
     }
 
 }

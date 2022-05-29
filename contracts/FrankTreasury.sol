@@ -51,12 +51,12 @@ contract FrankTreasury is Ownable {
     }
 
     /// @notice Contract interfaces
-    IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
-    IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0x25D85E17dD9e544F6E9F8D44F99602dbF5a97341);
-    IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0x1a731B2299E22FbAC282E7094EdA41046343Cb51);
-    IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x60aE616a2155Ee3d9A68541Ba4544862310933d4);
-    IERC20 public constant JOE = IERC20(0x6e84a6216eA6dACC71eE8E6b0a5B7322EEbC0fDd);
-    IERC20 public constant USDC = IERC20(0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E);
+    //IBoostedMasterChefJoe public constant BMCJ = IBoostedMasterChefJoe(0x4483f0b6e2F5486D06958C20f8C39A7aBe87bf8F);
+    IVeJoeStaking public constant VeJoeStaking = IVeJoeStaking(0xf09597ef3cEebd18905ba573E48ec9Ad3A160096);
+    IStableJoeStaking public constant SJoeStaking = IStableJoeStaking(0xCF6E93c729f07019819Bc67C7ebadda4FaC3b233);
+    IJoeRouter02 public constant TraderJoeRouter = IJoeRouter02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    IERC20 public constant JOE = IERC20(0x1217686124AA11323cC389a8BC39C170D665370b);
+    IERC20 public constant USDC = IERC20(0xe22da380ee6B445bb8273C81944ADEB6E8450422);
     IBondManager public BondManager;
 
     address private constant teamAddress = 0xE6461Da23098d2420Ce9A35b329FA82db0919c30;
@@ -266,7 +266,7 @@ contract FrankTreasury is Ownable {
         }
 
         
-
+/*
         uint256 pid = getPoolIDFromLPToken(pool);
 
         if (!isPIDActive[pid]) {
@@ -280,7 +280,7 @@ contract FrankTreasury is Ownable {
         BMCJ.deposit(pid, liquidity);
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
 
-        
+        */
 
         emit ADD_LIQUIDITY(pool, liquidity);
     }
@@ -289,11 +289,11 @@ contract FrankTreasury is Ownable {
     /// @param amount Amount of LP tokens to remove from liquidity.
     /// @param pool Boosted pool address.
     function _removeLiquidity(uint256 amount, address pool) private returns (uint256) {
-        uint256 liquidityBalance = IERC20(pool).balanceOf(address(this));
-        require(liquidityBalance >= amount);
-
-        
+        /*
         uint256 pid = getPoolIDFromLPToken(pool);
+
+        uint256 liquidityBalance = BMCJ.userInfo(pid, address(this)).amount;
+        require(liquidityBalance >= amount);
 
         if (amount == liquidityBalance) {
             isPIDActive[pid] = false;
@@ -312,7 +312,7 @@ contract FrankTreasury is Ownable {
             
         }
         
-        
+        */
 
         IJoePair pair = IJoePair(pool);
 
@@ -320,7 +320,7 @@ contract FrankTreasury is Ownable {
 
         
         uint256 balanceBefore = JOE.balanceOf(address(this));
-        BMCJ.withdraw(pid, amount);
+        //BMCJ.withdraw(pid, amount);
         uint256 balanceAfter = JOE.balanceOf(address(this));
         currentRevenue +=  balanceAfter - balanceBefore;
 
@@ -373,11 +373,11 @@ contract FrankTreasury is Ownable {
     function harvestAll() public { 
         uint256 balanceBefore = JOE.balanceOf(address(this));
         
-        
+        /*
         for(uint i = 0; i < activePIDs.length; i++) {
             BMCJ.deposit(activePIDs[i], 0);
         }
-        
+        */
         
         claimJoeFromStaking();
         currentRevenue += (JOE.balanceOf(address(this)) - balanceBefore); 
@@ -387,10 +387,9 @@ contract FrankTreasury is Ownable {
     function claimJoeFromStaking() private {
         IStableJoeStaking(SJoeStaking).withdraw(0);
 
+/*
         // Converts USDC rewards to JOE
 
-        
-        
         address[] memory path = new address[](2);
         path[0] = address(USDC);
         path[1] = address(JOE);
@@ -400,7 +399,7 @@ contract FrankTreasury is Ownable {
         USDC.approve(address(TraderJoeRouter), USDCBalance);
         TraderJoeRouter.swapExactTokensForTokens(USDCBalance, (TraderJoeRouter.getAmountsOut(USDCBalance, path)[1]) * slippage / 1000, path, address(this), (block.timestamp + 1000));
         
-        
+    */
 
         IVeJoeStaking(VeJoeStaking).claim();
     }
@@ -431,7 +430,7 @@ contract FrankTreasury is Ownable {
 
         return amounts;
     }
-
+/*
     /// @notice Get PID from LP token address.
     /// @param token LP token address. 
     function getPoolIDFromLPToken(address token) internal view returns (uint256) {
@@ -443,7 +442,7 @@ contract FrankTreasury is Ownable {
         }
         revert();
     }
-    
+    */
 
     /// @notice Emergency withdraw function.
     /// @param token Token to withdraw.

@@ -8,12 +8,12 @@ import "./libraries/SafeMath.sol";
 import "./libraries/Address.sol";
 import "./interfaces/IBondManager.sol";
 
-/// @title ERC721 implementation for Farmer Frank NFT Bonds (Perpetuities). 
+/// @title ERC721 implementation of Farmer Frank NFT Bonds (Perpetuities). 
 /// @author @0xSorcerer
 
 /// Users are not supposed to interract with this contract. Most functions are marked
 /// as onlyOwner, where the contract owner will be a BondManager contract. Users will use the BondManager
-/// contract to mint and claim, which will call the functions in this contract.
+/// contract to mint and claim, which will call functions within this contract.
 /// This contract holds Bond Data.
 
 contract fNFTBond is ERC721, Ownable {
@@ -51,7 +51,7 @@ contract fNFTBond is ERC721, Ownable {
         _;
     }
 
-    /// @notice Bet bond object of bondID.
+    /// @notice Get bond object at bondID.
     /// @param bondID Unique fNFT Bond ID.
     /// @return bond Returns unique fNFT bond object. 
     function getBond(uint256 bondID) external view onlyIfExists(bondID) returns (Bond memory bond) {

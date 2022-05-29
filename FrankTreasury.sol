@@ -185,7 +185,7 @@ contract FrankTreasury is Ownable {
         reinvest(reinvestedAmount);
 
         JOE.approve(address(BondManager), rewardedAmount);
-        BondManager.depositRewards(rewardedAmount, reinvestedAmount);
+        BondManager.depositRewards(reinvestedAmount, rewardedAmount);
 
         totalRevenue = SafeMath.add(totalRevenue, currentRevenue);
         currentRevenue = 0;
