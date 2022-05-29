@@ -71,7 +71,9 @@ contract FrankTreasury is Ownable {
     uint256 private totalRevenue;
 
     /// @dev Minimum amount of currentRevenue required to distribute rewards.
-    uint256 private DISTRIBUTE_THRESHOLD = 5_000 * 10 ** 18; 
+    /// CHANGE HERE
+    //uint256 private DISTRIBUTE_THRESHOLD = 5_000 * 10 ** 18; 
+    uint256 private DISTRIBUTE_THRESHOLD = 0; 
 
     /// @dev Storing BMCJ pools utilized Treasury is farming in.
     uint256[] private activePIDs;
